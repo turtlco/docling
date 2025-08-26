@@ -227,6 +227,7 @@ class PdfBackend(str, Enum):
     """Enum of valid PDF backends."""
 
     PYPDFIUM2 = "pypdfium2"
+    PYMUPDF = "pymupdf"
     DLPARSE_V1 = "dlparse_v1"
     DLPARSE_V2 = "dlparse_v2"
     DLPARSE_V4 = "dlparse_v4"
