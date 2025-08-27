@@ -96,12 +96,46 @@ class ReadingOrderModel:
             )
             if c_label == DocItemLabel.LIST_ITEM:
                 # TODO: Infer if this is a numbered or a bullet list item
-                l_item = doc.add_list_item(parent=doc_item, text=c_text, prov=c_prov)
+                # Collect font_metadata from cells
+                font_metadata = []
+                for cell in child.cells:
+                    if hasattr(cell, 'font_metadata') and cell.font_metadata:
+                        font_metadata.extend(cell.font_metadata)
+                        
+                l_item = doc.add_list_item(
+                    parent=doc_item, 
+                    text=c_text, 
+                    prov=c_prov,
+                    font_metadata=font_metadata if font_metadata else None
+                )
                 self.list_item_processor.process_list_item(l_item)
             elif c_label == DocItemLabel.SECTION_HEADER:
-                doc.add_heading(parent=doc_item, text=c_text, prov=c_prov)
+                # Collect font_metadata from cells
+                font_metadata = []
+                for cell in child.cells:
+                    if hasattr(cell, 'font_metadata') and cell.font_metadata:
+                        font_metadata.extend(cell.font_metadata)
+                        
+                doc.add_heading(
+                    parent=doc_item, 
+                    text=c_text, 
+                    prov=c_prov,
+                    font_metadata=font_metadata if font_metadata else None
+                )
             else:
-                doc.add_text(parent=doc_item, label=c_label, text=c_text, prov=c_prov)
+                # Collect font_metadata from cells
+                font_metadata = []
+                for cell in child.cells:
+                    if hasattr(cell, 'font_metadata') and cell.font_metadata:
+                        font_metadata.extend(cell.font_metadata)
+                        
+                doc.add_text(
+                    parent=doc_item, 
+                    label=c_label, 
+                    text=c_text, 
+                    prov=c_prov,
+                    font_metadata=font_metadata if font_metadata else None
+                )
 
     def _readingorder_elements_to_docling_doc(  # noqa: C901
         self,
@@ -162,7 +196,11 @@ class ReadingOrderModel:
                         charspan=(0, len(cap_text)),
                         bbox=element.cluster.bbox.to_bottom_left_origin(page_height),
                     )
-                    code_item = out_doc.add_code(text=cap_text, prov=prov)
+                    code_item = out_doc.add_code(
+                        text=cap_text, 
+                        prov=prov,
+                        font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None
+                    )
 
                     if rel.cid in el_to_captions_mapping.keys():
                         for caption_cid in el_to_captions_mapping[rel.cid]:
@@ -240,7 +278,10 @@ class ReadingOrderModel:
                     charspan=(0, len(cap_text)),
                     bbox=element.cluster.bbox.to_bottom_left_origin(page_height),
                 )
-                pic = out_doc.add_picture(prov=prov)
+                pic = out_doc.add_picture(
+                    prov=prov,
+                    annotations=element.annotations if hasattr(element, 'annotations') else None
+                )
 
                 if rel.cid in el_to_captions_mapping.keys():
                     for caption_cid in el_to_captions_mapping[rel.cid]:
@@ -285,7 +326,11 @@ class ReadingOrderModel:
             bbox=elem.cluster.bbox.to_bottom_left_origin(page_height),
         )
         new_item = out_doc.add_text(
-            label=elem.label, text=text, prov=prov, parent=parent
+            label=elem.label, 
+            text=text, 
+            prov=prov, 
+            parent=parent,
+            font_metadata=elem.font_metadata if hasattr(elem, 'font_metadata') else None
         )
         return new_item
 
@@ -304,19 +349,31 @@ class ReadingOrderModel:
 
             # TODO: Infer if this is a numbered or a bullet list item
             new_item = out_doc.add_list_item(
-                text=cap_text, enumerated=False, prov=prov, parent=current_list
+                text=cap_text, 
+                enumerated=False, 
+                prov=prov, 
+                parent=current_list,
+                font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None
             )
             self.list_item_processor.process_list_item(new_item)
 
         elif label == DocItemLabel.SECTION_HEADER:
             current_list = None
 
-            new_item = out_doc.add_heading(text=cap_text, prov=prov)
+            new_item = out_doc.add_heading(
+                text=cap_text, 
+                prov=prov,
+                font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None
+            )
         elif label == DocItemLabel.FORMULA:
             current_list = None
 
             new_item = out_doc.add_text(
-                label=DocItemLabel.FORMULA, text="", orig=cap_text, prov=prov
+                label=DocItemLabel.FORMULA, 
+                text="", 
+                orig=cap_text, 
+                prov=prov,
+                font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None
             )
         else:
             current_list = None

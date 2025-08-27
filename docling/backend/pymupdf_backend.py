@@ -247,7 +247,7 @@ class PyMuPdfPageBackend(PdfPageBackend):
 
         dimension = _page_geometry_from_pymupdf(self._page, angle=angle)
 
-        return SegmentedPdfPage(
+        segmented_page = SegmentedPdfPage(
             dimension=dimension,
             textline_cells=text_cells,
             char_cells=[],
@@ -256,6 +256,8 @@ class PyMuPdfPageBackend(PdfPageBackend):
             has_words=len(word_cells) > 0,
             has_chars=False,
         )
+        
+        return segmented_page
 
     def get_text_cells(self) -> Iterable[TextCell]:
         return self._compute_text_cells()

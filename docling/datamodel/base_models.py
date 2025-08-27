@@ -1,7 +1,7 @@
 import math
 from collections import defaultdict
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 from docling_core.types.doc import (
@@ -13,6 +13,7 @@ from docling_core.types.doc import (
     TableCell,
 )
 from docling_core.types.doc.base import PydanticSerCtxKey, round_pydantic_float
+from pydantic import Field
 from docling_core.types.doc.page import SegmentedPdfPage, TextCell
 from docling_core.types.io import (
     DocumentStream,
@@ -201,6 +202,13 @@ class TableStructurePrediction(BaseModel):
 
 class TextElement(BasePageElement):
     text: str
+    font_metadata: Optional[List[Dict[str, Any]]] = Field(default=None)
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Ensure font_metadata is initialized
+        if 'font_metadata' not in data:
+            self.font_metadata = None
 
 
 class FigureElement(BasePageElement):
