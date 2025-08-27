@@ -31,7 +31,55 @@ class PageAssembleModel(BasePageModel):
     def __init__(self, options: PageAssembleOptions):
         self.options = options
 
+    def normalize_characters(self, text):
+        """Normalize special characters in a text string."""
+        normalized = text
+        normalized = normalized.replace("⁄", "/")  # noqa: RUF001
+        normalized = normalized.replace("'", "'")  # noqa: RUF001
+        normalized = normalized.replace("'", "'")  # noqa: RUF001
+        normalized = normalized.replace(""", '"')
+        normalized = normalized.replace(""", '"')
+        normalized = normalized.replace("•", "·")
+        return normalized
+        
+    def sanitize_font_metadata(self, metadata_list):
+        """
+        Sanitize text in font metadata to match the main text processing.
+        
+        Args:
+            metadata_list: List of font metadata dictionaries
+            
+        Returns:
+            List of sanitized font metadata dictionaries
+        """
+        if not metadata_list:
+            return []
+            
+        sanitized_metadata = []
+        
+        for meta in metadata_list:
+            # Create a copy to avoid modifying the original
+            meta_copy = meta.copy()
+            
+            # Get the text from metadata
+            text = meta_copy.get("text", "")
+            
+            # Remove hyphen at end of text if present
+            if text.endswith("-"):
+                text = text[:-1]
+                
+            # Normalize characters
+            text = self.normalize_characters(text)
+            
+            # Update the text in the metadata copy
+            meta_copy["text"] = text
+            
+            sanitized_metadata.append(meta_copy)
+            
+        return sanitized_metadata
+        
     def sanitize_text(self, lines):
+        """Process a list of text lines, handling hyphenation and normalizing characters."""
         if len(lines) <= 1:
             return " ".join(lines)
 
@@ -53,14 +101,9 @@ class PageAssembleModel(BasePageModel):
                 lines[ix] += " "
 
         sanitized_text = "".join(lines)
-
-        # Text normalization
-        sanitized_text = sanitized_text.replace("⁄", "/")  # noqa: RUF001
-        sanitized_text = sanitized_text.replace("’", "'")  # noqa: RUF001
-        sanitized_text = sanitized_text.replace("‘", "'")  # noqa: RUF001
-        sanitized_text = sanitized_text.replace("“", '"')
-        sanitized_text = sanitized_text.replace("”", '"')
-        sanitized_text = sanitized_text.replace("•", "·")
+        
+        # Apply character normalization
+        sanitized_text = self.normalize_characters(sanitized_text)
 
         return sanitized_text.strip()  # Strip any leading or trailing whitespace
 
@@ -91,11 +134,13 @@ class PageAssembleModel(BasePageModel):
                             ]
                             text = self.sanitize_text(textlines)
                             
-                            # Collect font_metadata from cells
+                            # Collect and sanitize font_metadata from cells
                             font_metadata = []
                             for cell in cluster.cells:
                                 if hasattr(cell, 'font_metadata') and cell.font_metadata:
-                                    font_metadata.extend(cell.font_metadata)
+                                    # Apply the same sanitization to font metadata text
+                                    sanitized_metadata = self.sanitize_font_metadata(cell.font_metadata)
+                                    font_metadata.extend(sanitized_metadata)
                                     
                             text_el = TextElement(
                                 label=cluster.label,
