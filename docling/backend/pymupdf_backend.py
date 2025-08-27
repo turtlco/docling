@@ -110,13 +110,56 @@ class PyMuPdfPageBackend(PdfPageBackend):
                 )
 
                 # Extract font information directly from spans
-                font_metadata = [{
-                    "text": span.get("text", "").strip(),
-                    "font": span.get("font", ""),
-                    "size": span.get("size", ""),
-                    "flags": span.get("flags", ""),
-                    "color": span.get("color", "")
-                } for span in spans if span.get("text", "").strip()]
+                font_metadata = []
+                for span in spans:
+                    text = span.get("text", "").strip()
+                    if not text:
+                        continue
+                    
+                    font_name = span.get("font", "")
+                    font_size = span.get("size", 0.0)
+                    flags = span.get("flags", 0)
+                    color_int = span.get("color", 0)
+                    
+                    # Convert color to hex format
+                    r = (color_int >> 16) & 0xFF
+                    g = (color_int >> 8) & 0xFF
+                    b = color_int & 0xFF
+                    color_hex = f"#{r:02x}{g:02x}{b:02x}"
+                    
+                    # Extract span bbox
+                    l, t, r, b = span.get("bbox", (0, 0, 0, 0))
+                    
+                    # Determine font properties from flags
+                    # Flags: bit 0 = bold, bit 1 = italic, bit 2 = monospace
+                    is_bold = bool(flags & 1)
+                    is_italic = bool(flags & 2)
+                    is_monospaced = bool(flags & 4)
+                    
+                    # Estimate weight based on bold flag (700 for bold, 400 for normal)
+                    weight = 700 if is_bold else 400
+                    
+                    # Extract alt_family_name (base font name without style indicators)
+                    alt_family_name = font_name
+                    if "-" in font_name:
+                        alt_family_name = font_name.split("-")[0]
+                    
+                    # Estimate lineHeight as 1.2 times the font size
+                    line_height = font_size * 1.2
+                    
+                    font_metadata.append({
+                        "text": text,
+                        "font_family": font_name,
+                        "font_size": font_size,
+                        "name": font_name,
+                        "color": color_hex,
+                        "bbox": [float(l), float(t), float(r), float(b)],
+                        "italic": is_italic,
+                        "monospaced": is_monospaced,
+                        "weight": weight,
+                        "line_height": line_height,
+                        "alt_family_name": alt_family_name
+                    })
                 
                 # Create a TextCell with the text content and font info
                 cell = TextCell(
@@ -164,10 +207,33 @@ class PyMuPdfPageBackend(PdfPageBackend):
                         coord_origin=CoordOrigin.TOPLEFT,
                     )
 
-                    font_name = span.get("font")
-                    font_size = span.get("size")
-                    font_flags = span.get("flags")
-                    font_color = span.get("color")
+                    font_name = span.get("font", "")
+                    font_size = span.get("size", 0.0)
+                    flags = span.get("flags", 0)
+                    color_int = span.get("color", 0)
+                    
+                    # Convert color to hex format
+                    r = (color_int >> 16) & 0xFF
+                    g = (color_int >> 8) & 0xFF
+                    b = color_int & 0xFF
+                    color_hex = f"#{r:02x}{g:02x}{b:02x}"
+                    
+                    # Determine font properties from flags
+                    # Flags: bit 0 = bold, bit 1 = italic, bit 2 = monospace
+                    is_bold = bool(flags & 1)
+                    is_italic = bool(flags & 2)
+                    is_monospaced = bool(flags & 4)
+                    
+                    # Estimate weight based on bold flag (700 for bold, 400 for normal)
+                    weight = 700 if is_bold else 400
+                    
+                    # Extract alt_family_name (base font name without style indicators)
+                    alt_family_name = font_name
+                    if "-" in font_name:
+                        alt_family_name = font_name.split("-")[0]
+                    
+                    # Estimate lineHeight as 1.2 times the font size
+                    line_height = font_size * 1.2
 
                     # Create a TextCell with the text content
                     cell = TextCell(
@@ -178,10 +244,18 @@ class PyMuPdfPageBackend(PdfPageBackend):
                         from_ocr=False,
                         font_metadata=[{
                             "text": text_content,
-                            "font": font_name,
-                            "size": font_size,
-                            "flags": font_flags,
-                            "color": font_color
+                            "font_family": font_name,
+                            "font_size": font_size,
+                            "name": font_name,
+                            "color": color_hex,
+                            "bbox": [float(l), float(t), float(r), float(b)],
+                            "italic": is_italic,
+                            "monospaced": is_monospaced,
+                            "subset": False,
+                            "weight": weight,
+                            "lineHeight": line_height,
+                            "spaceAfter": 0,
+                            "alt_family_name": alt_family_name
                         }]
                     )
                     
