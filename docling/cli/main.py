@@ -29,6 +29,7 @@ from docling.backend.docling_parse_v4_backend import DoclingParseV4DocumentBacke
 from docling.backend.mets_gbs_backend import MetsGbsDocumentBackend
 from docling.backend.pdf_backend import PdfDocumentBackend
 from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
+from docling.backend.pymupdf_backend import PyMuPdfDocumentBackend
 from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.asr_model_specs import (
     WHISPER_BASE,
@@ -610,6 +611,8 @@ def convert(  # noqa: C901
                 backend = DoclingParseV4DocumentBackend  # type: ignore
             elif pdf_backend == PdfBackend.PYPDFIUM2:
                 backend = PyPdfiumDocumentBackend  # type: ignore
+            elif pdf_backend == PdfBackend.PYMUPDF:
+                backend = PyMuPdfDocumentBackend  # type: ignore
             else:
                 raise RuntimeError(f"Unexpected PDF backend type {pdf_backend}")
 
