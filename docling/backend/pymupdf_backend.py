@@ -61,17 +61,91 @@ def _page_geometry_from_pymupdf(
 
 class PyMuPdfPageBackend(PdfPageBackend):
     def __init__(self, doc: fitz.Document, document_hash: str, page_no: int):
-        self.valid = True
-        self._page: Optional[fitz.Page] = None
-        try:
-            with pymupdf_lock:
-                self._page = doc.load_page(page_no)
-        except Exception:
-            _log.info(
-                f"An exception occurred when loading page {page_no} of document {document_hash}.",
-                exc_info=True,
-            )
-            self.valid = False
+        self._doc = doc
+        self._page = doc[page_no]
+        self.document_hash = document_hash
+        self.page_no = page_no
+        self.valid = self._page is not None
+
+    def _color_int_to_hex(self, color_int: int) -> str:
+        """Convert PyMuPDF color integer to hex string."""
+        r = (color_int >> 16) & 0xFF
+        g = (color_int >> 8) & 0xFF
+        b = color_int & 0xFF
+        return f"#{r:02x}{g:02x}{b:02x}"
+
+    def _create_bounding_box(self, bbox_tuple: tuple, coord_origin: CoordOrigin = CoordOrigin.TOPLEFT) -> BoundingBox:
+        """Create BoundingBox from tuple with consistent coordinate origin."""
+        l, t, r, b = bbox_tuple
+        return BoundingBox(
+            l=float(l),
+            t=float(t),
+            r=float(r),
+            b=float(b),
+            coord_origin=coord_origin
+        )
+
+    def _create_font_metadata(self, span: dict, text: str) -> dict:
+        """Create font metadata dictionary from a span."""
+        font_name = span.get("font", "")
+        font_size = span.get("size", 0.0)
+        flags = span.get("flags", 0)
+        color_int = span.get("color", 0)
+        
+        # Convert color to hex format
+        color_hex = self._color_int_to_hex(color_int)
+        
+        # Determine font properties from flags
+        is_bold = bool(flags & 1)
+        is_italic = bool(flags & 2)
+        is_monospaced = bool(flags & 4)
+        
+        # Extract alt_family_name (base font name without style indicators)
+        alt_family_name = font_name
+        if "-" in font_name:
+            alt_family_name = font_name.split("-")[0]
+        
+        # Calculate bounding box height
+        l, t, r, b = span.get("bbox", (0, 0, 0, 0))
+        bbox_height = float(b) - float(t)
+        
+        return {
+            "text": text,
+            "font_family": font_name,
+            "font_size": font_size,
+            "name": font_name,
+            "color": color_hex,
+            "bbox": [float(l), float(t), float(r), float(b)],
+            "bold": is_bold,
+            "italic": is_italic,
+            "monospaced": is_monospaced,
+            "bbox_height": bbox_height,
+            "alt_family_name": alt_family_name
+        }
+
+    def _create_text_cell(self, index: int, text: str, bbox: BoundingBox, 
+                          font_metadata: List[dict], is_word_level: bool = False) -> TextCell:
+        """Create a TextCell with consistent metadata structure."""
+        if is_word_level:
+            # Word-level specific metadata
+            base_metadata = font_metadata[0] if font_metadata else {}
+            metadata = [{
+                **base_metadata,
+                "subset": False,
+                "weight": 700 if base_metadata.get("bold", False) else 400,
+                "spaceAfter": 0
+            }]
+        else:
+            metadata = font_metadata
+        
+        return TextCell(
+            index=index,
+            text=text,
+            orig=text,
+            rect=BoundingRectangle.from_bounding_box(bbox),
+            from_ocr=False,
+            font_metadata=metadata
+        )
 
     def is_valid(self) -> bool:
         return self.valid
@@ -100,14 +174,7 @@ class PyMuPdfPageBackend(PdfPageBackend):
                     continue
 
                 # Line bbox is provided in top-left origin by PyMuPDF
-                l, t, r, b = line.get("bbox", (0, 0, 0, 0))
-                bbox_tl = BoundingBox(
-                    l=float(l),
-                    t=float(t),
-                    r=float(r),
-                    b=float(b),
-                    coord_origin=CoordOrigin.TOPLEFT,
-                )
+                bbox_tl = self._create_bounding_box(line.get("bbox", (0, 0, 0, 0)))
 
                 # Extract font information directly from spans
                 font_metadata = []
@@ -116,57 +183,10 @@ class PyMuPdfPageBackend(PdfPageBackend):
                     if not text:
                         continue
                     
-                    font_name = span.get("font", "")
-                    font_size = span.get("size", 0.0)
-                    flags = span.get("flags", 0)
-                    color_int = span.get("color", 0)
-                    
-                    # Convert color to hex format
-                    r = (color_int >> 16) & 0xFF
-                    g = (color_int >> 8) & 0xFF
-                    b = color_int & 0xFF
-                    color_hex = f"#{r:02x}{g:02x}{b:02x}"
-                    
-                    # Extract span bbox
-                    l, t, r, b = span.get("bbox", (0, 0, 0, 0))
-                    
-                    # Determine font properties from flags
-                    # Flags: bit 0 = bold, bit 1 = italic, bit 2 = monospace
-                    is_bold = bool(flags & 1)
-                    is_italic = bool(flags & 2)
-                    is_monospaced = bool(flags & 4)
-                    
-                    # Extract alt_family_name (base font name without style indicators)
-                    alt_family_name = font_name
-                    if "-" in font_name:
-                        alt_family_name = font_name.split("-")[0]
-                    
-                    # Calculate lineHeight as the actual bounding box height of the span
-                    line_height = float(b) - float(t)
-                    
-                    font_metadata.append({
-                        "text": text,
-                        "font_family": font_name,
-                        "font_size": font_size,
-                        "name": font_name,
-                        "color": color_hex,
-                        "bbox": [float(l), float(t), float(r), float(b)],
-                        "bold": is_bold,
-                        "italic": is_italic,
-                        "monospaced": is_monospaced,
-                        "line_height": line_height,
-                        "alt_family_name": alt_family_name
-                    })
+                    font_metadata.append(self._create_font_metadata(span, text))
                 
                 # Create a TextCell with the text content and font info
-                cell = TextCell(
-                    index=cell_counter,
-                    text=text_content,
-                    orig=text_content,
-                    rect=BoundingRectangle.from_bounding_box(bbox_tl),
-                    from_ocr=False,
-                    font_metadata=font_metadata
-                )
+                cell = self._create_text_cell(cell_counter, text_content, bbox_tl, font_metadata)
                 cells.append(cell)
                 cell_counter += 1
 
@@ -195,66 +215,12 @@ class PyMuPdfPageBackend(PdfPageBackend):
                     if text_content == "":
                         continue
 
-                    l, t, r, b = span.get("bbox", (0, 0, 0, 0))
-                    bbox_tl = BoundingBox(
-                        l=float(l),
-                        t=float(t),
-                        r=float(r),
-                        b=float(b),
-                        coord_origin=CoordOrigin.TOPLEFT,
-                    )
+                    bbox_tl = self._create_bounding_box(span.get("bbox", (0, 0, 0, 0)))
 
-                    font_name = span.get("font", "")
-                    font_size = span.get("size", 0.0)
-                    flags = span.get("flags", 0)
-                    color_int = span.get("color", 0)
-                    
-                    # Convert color to hex format
-                    r = (color_int >> 16) & 0xFF
-                    g = (color_int >> 8) & 0xFF
-                    b = color_int & 0xFF
-                    color_hex = f"#{r:02x}{g:02x}{b:02x}"
-                    
-                    # Determine font properties from flags
-                    # Flags: bit 0 = bold, bit 1 = italic, bit 2 = monospace
-                    is_bold = bool(flags & 1)
-                    is_italic = bool(flags & 2)
-                    is_monospaced = bool(flags & 4)
-                    
-                    # Estimate weight based on bold flag (700 for bold, 400 for normal)
-                    weight = 700 if is_bold else 400
-                    
-                    # Extract alt_family_name (base font name without style indicators)
-                    alt_family_name = font_name
-                    if "-" in font_name:
-                        alt_family_name = font_name.split("-")[0]
-                    
-                    # Calculate lineHeight as the actual bounding box height of the span
-                    line_height = float(b) - float(t)
+                    font_metadata = [self._create_font_metadata(span, text_content)]
 
                     # Create a TextCell with the text content
-                    cell = TextCell(
-                        index=span_index,
-                        text=text_content,
-                        orig=text_content,
-                        rect=BoundingRectangle.from_bounding_box(bbox_tl),
-                        from_ocr=False,
-                        font_metadata=[{
-                            "text": text_content,
-                            "font_family": font_name,
-                            "font_size": font_size,
-                            "name": font_name,
-                            "color": color_hex,
-                            "bbox": [float(l), float(t), float(r), float(b)],
-                            "italic": is_italic,
-                            "monospaced": is_monospaced,
-                            "subset": False,
-                            "weight": weight,
-                            "lineHeight": line_height,
-                            "spaceAfter": 0,
-                            "alt_family_name": alt_family_name
-                        }]
-                    )
+                    cell = self._create_text_cell(span_index, text_content, bbox_tl, font_metadata, is_word_level=True)
                     
                     word_cells.append(cell)
                     span_index += 1
