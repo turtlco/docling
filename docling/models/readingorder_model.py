@@ -326,11 +326,12 @@ class ReadingOrderModel:
                 content_layer = ContentLayer.FURNITURE
 
             new_item = out_doc.add_text(
-                label=element.label,
-                text=cap_text,
-                prov=prov,
-                content_layer=content_layer,
-            )
+                        label=element.label,
+                        text=cap_text,
+                        prov=prov,
+                        content_layer=content_layer,
+                        font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None,
+                    )
         return new_item, current_list
 
     def _merge_elements(self, element, merged_elem, new_item, page_height):

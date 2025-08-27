@@ -90,12 +90,20 @@ class PageAssembleModel(BasePageModel):
                                 if len(cell.text.strip()) > 0
                             ]
                             text = self.sanitize_text(textlines)
+                            
+                            # Collect font_metadata from cells
+                            font_metadata = []
+                            for cell in cluster.cells:
+                                if hasattr(cell, 'font_metadata') and cell.font_metadata:
+                                    font_metadata.extend(cell.font_metadata)
+                                    
                             text_el = TextElement(
                                 label=cluster.label,
                                 id=cluster.id,
                                 text=text,
                                 page_no=page.page_no,
                                 cluster=cluster,
+                                font_metadata=font_metadata if font_metadata else None,
                             )
                             elements.append(text_el)
 
