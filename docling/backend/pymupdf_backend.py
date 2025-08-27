@@ -136,9 +136,6 @@ class PyMuPdfPageBackend(PdfPageBackend):
                     is_italic = bool(flags & 2)
                     is_monospaced = bool(flags & 4)
                     
-                    # Estimate weight based on bold flag (700 for bold, 400 for normal)
-                    weight = 700 if is_bold else 400
-                    
                     # Extract alt_family_name (base font name without style indicators)
                     alt_family_name = font_name
                     if "-" in font_name:
@@ -154,9 +151,9 @@ class PyMuPdfPageBackend(PdfPageBackend):
                         "name": font_name,
                         "color": color_hex,
                         "bbox": [float(l), float(t), float(r), float(b)],
+                        "bold": is_bold,
                         "italic": is_italic,
                         "monospaced": is_monospaced,
-                        "weight": weight,
                         "line_height": line_height,
                         "alt_family_name": alt_family_name
                     })
