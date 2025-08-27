@@ -110,7 +110,7 @@ class PyMuPdfPageBackend(PdfPageBackend):
                 )
 
                 # Extract font information directly from spans
-                font_info = [{
+                font_metadata = [{
                     "text": span.get("text", "").strip(),
                     "font": span.get("font", ""),
                     "size": span.get("size", ""),
@@ -125,10 +125,8 @@ class PyMuPdfPageBackend(PdfPageBackend):
                     orig=text_content,
                     rect=BoundingRectangle.from_bounding_box(bbox_tl),
                     from_ocr=False,
+                    font_metadata=font_metadata
                 )
-                
-                # Add font_info as a custom attribute
-                setattr(cell, 'font_info', font_info)
                 cells.append(cell)
                 cell_counter += 1
 
@@ -178,16 +176,14 @@ class PyMuPdfPageBackend(PdfPageBackend):
                         orig=text_content,
                         rect=BoundingRectangle.from_bounding_box(bbox_tl),
                         from_ocr=False,
+                        font_metadata=[{
+                            "text": text_content,
+                            "font": font_name,
+                            "size": font_size,
+                            "flags": font_flags,
+                            "color": font_color
+                        }]
                     )
-                    
-                    # Add font information as a custom attribute
-                    setattr(cell, 'font_info', [{
-                        "text": text_content,
-                        "font": font_name,
-                        "size": font_size,
-                        "flags": font_flags,
-                        "color": font_color
-                    }])
                     
                     word_cells.append(cell)
                     span_index += 1
