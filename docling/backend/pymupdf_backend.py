@@ -141,8 +141,8 @@ class PyMuPdfPageBackend(PdfPageBackend):
                     if "-" in font_name:
                         alt_family_name = font_name.split("-")[0]
                     
-                    # Estimate lineHeight as 1.2 times the font size
-                    line_height = font_size * 1.2
+                    # Calculate lineHeight as the actual bounding box height of the span
+                    line_height = float(b) - float(t)
                     
                     font_metadata.append({
                         "text": text,
@@ -229,8 +229,8 @@ class PyMuPdfPageBackend(PdfPageBackend):
                     if "-" in font_name:
                         alt_family_name = font_name.split("-")[0]
                     
-                    # Estimate lineHeight as 1.2 times the font size
-                    line_height = font_size * 1.2
+                    # Calculate lineHeight as the actual bounding box height of the span
+                    line_height = float(b) - float(t)
 
                     # Create a TextCell with the text content
                     cell = TextCell(
