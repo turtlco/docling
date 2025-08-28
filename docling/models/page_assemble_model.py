@@ -78,6 +78,32 @@ class PageAssembleModel(BasePageModel):
             
         return sanitized_metadata
         
+    def extract_background_color(self, cells):
+        """
+        Extract background color from a cluster of cells.
+        
+        Args:
+            cells: List of TextCell objects
+            
+        Returns:
+            Background color as hex string or None if not found
+        """
+        if not cells:
+            return None
+            
+        # Try to get background color from the first cell's font metadata
+        for cell in cells:
+            if hasattr(cell, 'font_metadata') and cell.font_metadata:
+                for meta in cell.font_metadata:
+                    # Check if there's a background color in the metadata
+                    if 'background_color' in meta:
+                        return meta['background_color']
+                        
+        # If no background color found in font metadata, try to get from page
+        # This would require access to the page object, so we'll return None for now
+        # and let the calling code handle it
+        return None
+        
     def sanitize_text(self, lines):
         """Process a list of text lines, handling hyphenation and normalizing characters."""
         if len(lines) <= 1:
@@ -141,6 +167,9 @@ class PageAssembleModel(BasePageModel):
                                     # Apply the same sanitization to font metadata text
                                     sanitized_metadata = self.sanitize_font_metadata(cell.font_metadata)
                                     font_metadata.extend(sanitized_metadata)
+                            
+                            # Extract background color from cells
+                            background_color = self.extract_background_color(cluster.cells)
                                     
                             text_el = TextElement(
                                 label=cluster.label,
@@ -149,6 +178,7 @@ class PageAssembleModel(BasePageModel):
                                 page_no=page.page_no,
                                 cluster=cluster,
                                 font_metadata=font_metadata if font_metadata else None,
+                                background_color=background_color,
                             )
                             elements.append(text_el)
 

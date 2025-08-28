@@ -203,12 +203,10 @@ class TableStructurePrediction(BaseModel):
 class TextElement(BasePageElement):
     text: str
     font_metadata: Optional[List[Dict[str, Any]]] = Field(default=None)
+    background_color: Optional[str] = Field(default=None, description="Background color in hex format (e.g., #ffffff)")
     
     def __init__(self, **data):
         super().__init__(**data)
-        # Ensure font_metadata is initialized
-        if 'font_metadata' not in data:
-            self.font_metadata = None
 
 
 class FigureElement(BasePageElement):

@@ -94,6 +94,10 @@ class ReadingOrderModel:
             c_prov = ProvenanceItem(
                 page_no=element.page_no + 1, charspan=(0, len(c_text)), bbox=c_bbox
             )
+            
+            # Extract background color from cells
+            background_color = self._extract_background_color(child.cells)
+            
             if c_label == DocItemLabel.LIST_ITEM:
                 # TODO: Infer if this is a numbered or a bullet list item
                 # Collect font_metadata from cells
@@ -106,7 +110,8 @@ class ReadingOrderModel:
                     parent=doc_item, 
                     text=c_text, 
                     prov=c_prov,
-                    font_metadata=font_metadata if font_metadata else None
+                    font_metadata=font_metadata,
+                    background_color=background_color
                 )
                 self.list_item_processor.process_list_item(l_item)
             elif c_label == DocItemLabel.SECTION_HEADER:
@@ -120,7 +125,8 @@ class ReadingOrderModel:
                     parent=doc_item, 
                     text=c_text, 
                     prov=c_prov,
-                    font_metadata=font_metadata if font_metadata else None
+                    font_metadata=font_metadata,
+                    background_color=background_color
                 )
             else:
                 # Collect font_metadata from cells
@@ -134,8 +140,33 @@ class ReadingOrderModel:
                     label=c_label, 
                     text=c_text, 
                     prov=c_prov,
-                    font_metadata=font_metadata if font_metadata else None
+                    font_metadata=font_metadata,
+                    background_color=background_color
                 )
+    
+    def _extract_background_color(self, cells):
+        """
+        Extract background color from a cluster of cells.
+        
+        Args:
+            cells: List of TextCell objects
+            
+        Returns:
+            Background color as hex string or None if not found
+        """
+        if not cells:
+            return None
+            
+        # Try to get background color from the first cell's font metadata
+        for cell in cells:
+            if hasattr(cell, 'font_metadata') and cell.font_metadata:
+                for meta in cell.font_metadata:
+                    # Check if there's a background color in the metadata
+                    if 'background_color' in meta:
+                        return meta['background_color']
+                        
+        # If no background color found in font metadata, return None
+        return None
 
     def _readingorder_elements_to_docling_doc(  # noqa: C901
         self,
@@ -200,7 +231,8 @@ class ReadingOrderModel:
                     code_item = out_doc.add_code(
                         text=cap_text, 
                         prov=prov,
-                        font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None
+                        font_metadata=element.font_metadata,
+                        background_color=element.background_color
                     )
 
                     if rel.cid in el_to_captions_mapping.keys():
@@ -331,7 +363,8 @@ class ReadingOrderModel:
             text=text, 
             prov=prov, 
             parent=parent,
-            font_metadata=elem.font_metadata if hasattr(elem, 'font_metadata') else None
+            font_metadata=elem.font_metadata,
+            background_color=elem.background_color
         )
         return new_item
 
@@ -354,7 +387,8 @@ class ReadingOrderModel:
                 enumerated=False, 
                 prov=prov, 
                 parent=current_list,
-                font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None
+                font_metadata=element.font_metadata,
+                background_color=element.background_color
             )
             self.list_item_processor.process_list_item(new_item)
 
@@ -364,7 +398,8 @@ class ReadingOrderModel:
             new_item = out_doc.add_heading(
                 text=cap_text, 
                 prov=prov,
-                font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None
+                font_metadata=element.font_metadata,
+                background_color=element.background_color
             )
         elif label == DocItemLabel.FORMULA:
             current_list = None
@@ -374,7 +409,8 @@ class ReadingOrderModel:
                 text="", 
                 orig=cap_text, 
                 prov=prov,
-                font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None
+                font_metadata=element.font_metadata,
+                background_color=element.background_color
             )
         else:
             current_list = None
@@ -388,7 +424,8 @@ class ReadingOrderModel:
                         text=cap_text,
                         prov=prov,
                         content_layer=content_layer,
-                        font_metadata=element.font_metadata if hasattr(element, 'font_metadata') else None,
+                        font_metadata=element.font_metadata,
+                        background_color=element.background_color
                     )
         return new_item, current_list
 

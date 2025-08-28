@@ -141,6 +141,63 @@ class PyMuPdfPageBackend(PdfPageBackend):
             coord_origin=coord_origin
         )
 
+    def _extract_region_background_color(self, bbox: tuple) -> str:
+        """Extract background color for a specific region on the page.
+        
+        Args:
+            bbox: Bounding box tuple (l, t, r, b)
+            
+        Returns:
+            Background color as hex string
+        """
+        if not self._page:
+            return "#ffffff"
+            
+        try:
+            with pymupdf_lock:
+                # Create a small pixmap for the region
+                l, t, r, b = bbox
+                width = r - l
+                height = b - t
+                
+                # Skip if region is too small
+                if width < 1 or height < 1:
+                    return "#ffffff"
+                    
+                # Create a matrix for the region
+                matrix = fitz.Matrix(1, 1)  # 1:1 scale
+                clip_rect = fitz.Rect(l, t, r, b)
+                
+                # Get pixmap for the region
+                pix = self._page.get_pixmap(matrix=matrix, clip=clip_rect, alpha=False)
+                
+                # Sample pixels from the region
+                sample_points = [
+                    (0, 0),                    # Top-left
+                    (pix.width-1, 0),         # Top-right
+                    (0, pix.height-1),        # Bottom-left
+                    (pix.width-1, pix.height-1), # Bottom-right
+                    (pix.width//2, pix.height//2), # Center
+                ]
+                
+                colors = []
+                for x, y in sample_points:
+                    if 0 <= x < pix.width and 0 <= y < pix.height:
+                        pixel = pix.pixel(x, y)
+                        r, g, b = pixel[:3]  # Take first 3 values (RGB)
+                        colors.append(f"#{r:02x}{g:02x}{b:02x}")
+                
+                if colors:
+                    # Return the most common color
+                    from collections import Counter
+                    color_counts = Counter(colors)
+                    return color_counts.most_common(1)[0][0]
+                    
+        except Exception as e:
+            _log.debug(f"Error extracting region background color: {e}")
+            
+        return "#ffffff"  # Default to white on error
+
     def _create_font_metadata(self, span: dict, text: str, span_idx: int = 0, line: dict = None) -> dict:
         """Create font metadata dictionary from a span."""
         font_name = span.get("font", "")
@@ -183,6 +240,9 @@ class PyMuPdfPageBackend(PdfPageBackend):
         l, t, r, b = span.get("bbox", (0, 0, 0, 0))
         line_height = float(b) - float(t)
         
+        # Extract background color for this span's region
+        background_color = self._extract_region_background_color((l, t, r, b))
+        
         # Try to get alternative family name
         alt_family_name = None
         try:
@@ -209,7 +269,8 @@ class PyMuPdfPageBackend(PdfPageBackend):
             "subset": subset,
             "weight": weight,
             "line_height": round(line_height, 2),
-            "space_after": round(space_after, 2)
+            "space_after": round(space_after, 2),
+            "background_color": background_color
         }
         
         # Only add alt_family_name if it exists and is different from font_family
