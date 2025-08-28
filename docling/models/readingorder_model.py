@@ -162,10 +162,11 @@ class ReadingOrderModel:
         for page in conv_res.pages:
             page_no = page.page_no + 1
             size = page.size
+            metadata = page.metadata
 
             assert size is not None, "Page size is not initialized."
 
-            out_doc.add_page(page_no=page_no, size=size)
+            out_doc.add_page(page_no=page_no, size=size, metadata=metadata)
 
         current_list = None
         skippable_cids = {

@@ -269,6 +269,8 @@ class Page(BaseModel):
     # page_hash: Optional[str] = None
     size: Optional[Size] = None
     parsed_page: Optional[SegmentedPdfPage] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
     predictions: PagePredictions = PagePredictions()
     assembled: Optional[AssembledUnit] = None
 

@@ -8,6 +8,7 @@ from PIL import Image
 from docling.backend.pymupdf_backend import PyMuPdfDocumentBackend
 from docling.datamodel.document import InputDocument
 from docling.datamodel.base_models import InputFormat
+from docling.datamodel.base_models import Page
 
 
 def test_background_color_extraction():
@@ -44,21 +45,22 @@ def test_background_color_extraction():
     segmented_page = page.get_segmented_page()
     
     # Check if we can access the background color from the segmented page
-    # Note: This might fail if SegmentedPdfPage doesn't have metadata or page_info fields
-    try:
-        if hasattr(segmented_page, 'metadata') and segmented_page.metadata:
-            assert 'background_color' in segmented_page.metadata
-            assert segmented_page.metadata['background_color'] == bg_color
-        elif hasattr(segmented_page, 'page_info') and segmented_page.page_info:
-            assert 'background_color' in segmented_page.page_info
-            assert segmented_page.page_info['background_color'] == bg_color
-        else:
-            # If we can't access the background color from the segmented page,
-            # at least we should be able to get it from the page backend
-            print(f"Background color {bg_color} detected but not stored in segmented page")
-    except (AttributeError, KeyError) as e:
-        # This is not a failure, just a limitation of the current implementation
-        print(f"Could not access background color from segmented page: {e}")
+    # The background color should be stored in the metadata dictionary
+    assert hasattr(segmented_page, 'metadata'), "SegmentedPdfPage should have a metadata dictionary"
+    assert 'background_color' in segmented_page.metadata, "metadata should contain background_color"
+    assert segmented_page.metadata['background_color'] == bg_color, "Background color in metadata should match"
+    
+    # For backward compatibility, it should also be accessible directly
+    assert hasattr(segmented_page, 'background_color'), "SegmentedPdfPage should have background_color property"
+    assert segmented_page.background_color == bg_color, "Direct background_color property should match"
+    
+    # Check if the Page object also has the background color in its metadata
+    page_obj = Page(page_no=0, parsed_page=segmented_page)
+    assert 'background_color' in page_obj.metadata, "Page.metadata should contain background_color"
+    assert page_obj.metadata['background_color'] == bg_color, "Page metadata background_color should match"
+    
+    # Check that the computed property works
+    assert page_obj.background_color == bg_color, "Page.background_color property should match"
         
     # Clean up
     page.unload()

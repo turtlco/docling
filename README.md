@@ -6,6 +6,14 @@
 
 # Turtl's Docling
 
+## Syncing with Turtl's docling-core
+
+To sync with Turtl's docling-core, run:
+```bash
+uv lock --upgrade-package docling-core
+uv sync
+```
+
 ## Debugging with VSCode and uv
 
 To debug this Python application line by line in VSCode when using uv:
@@ -20,8 +28,17 @@ To debug this Python application line by line in VSCode when using uv:
             "name": "Python: Docling CLI with uv",
             "type": "python",
             "request": "launch",
-            "module": "docling.cli.main",
-            "args": ["${input:inputFile}", "--to", "json", "--output", "${workspaceFolder}/output"],
+            "module": "docling.cli.main",            "args": [
+                "${input:inputFile}",
+                "--to",
+                "json",
+                "--output",
+                "${workspaceFolder}/output",
+                "--debug-visualize-cells",
+                "--pdf-backend",
+                "pymupdf",
+                "--no-ocr"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false,
             "pythonPath": "${workspaceFolder}/.venv/bin/python",

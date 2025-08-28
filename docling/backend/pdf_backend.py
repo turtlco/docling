@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, Set, Union
+from typing import Any, Dict, Optional, Set, Union
 
 from docling_core.types.doc import BoundingBox, Size
 from docling_core.types.doc.page import SegmentedPdfPage, TextCell
@@ -38,6 +38,10 @@ class PdfPageBackend(ABC):
 
     @abstractmethod
     def get_size(self) -> Size:
+        pass
+
+    @abstractmethod
+    def get_metadata(self) -> Dict[str, Any]:
         pass
 
     @abstractmethod

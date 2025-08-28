@@ -1,7 +1,7 @@
 import logging
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 import fitz  # PyMuPDF
 from docling_core.types.doc import BoundingBox, CoordOrigin, Size
@@ -374,8 +374,6 @@ class PyMuPdfPageBackend(PdfPageBackend):
 
         dimension = _page_geometry_from_pymupdf(self._page, angle=angle)
         
-        background_color = self.get_background_color()
-        
         segmented_page = SegmentedPdfPage(
             dimension=dimension,
             textline_cells=text_cells,
@@ -384,7 +382,6 @@ class PyMuPdfPageBackend(PdfPageBackend):
             has_textlines=len(text_cells) > 0,
             has_words=len(word_cells) > 0,
             has_chars=False,
-            background_color=background_color,
         )
         
         return segmented_page
@@ -436,6 +433,11 @@ class PyMuPdfPageBackend(PdfPageBackend):
         with pymupdf_lock:
             rect = self._page.rect
             return Size(width=float(rect.width), height=float(rect.height))
+        
+    def get_metadata(self) -> Dict[str, Any]:
+        return {
+            'background_color': self.get_background_color()
+        }
 
     def unload(self):
         self._page = None

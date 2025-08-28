@@ -288,8 +288,11 @@ class PyPdfiumPageBackend(PdfPageBackend):
         # Get the PDF page geometry from pypdfium2
         dimension = get_pdf_page_geometry(self._ppage)
 
+        # Get background color
+        background_color = self.get_background_color()
+        
         # Create SegmentedPdfPage
-        return SegmentedPdfPage(
+        segmented_page = SegmentedPdfPage(
             dimension=dimension,
             textline_cells=text_cells,
             char_cells=[],
@@ -298,6 +301,15 @@ class PyPdfiumPageBackend(PdfPageBackend):
             has_words=False,
             has_chars=False,
         )
+        
+        # Add metadata dictionary if it doesn't exist
+        if not hasattr(segmented_page, 'metadata'):
+            segmented_page.metadata = {}
+            
+        # Store background color in metadata
+        segmented_page.metadata['background_color'] = background_color
+        
+        return segmented_page
 
     def get_text_cells(self) -> Iterable[TextCell]:
         return self._compute_text_cells()

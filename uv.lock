@@ -1150,7 +1150,7 @@ examples = [
 [[package]]
 name = "docling-core"
 version = "2.45.0"
-source = { git = "https://github.com/turtlco/docling-core.git?rev=main#ef4ba8eafbb11f9f1ee0b5e1e100af74889d37b7" }
+source = { git = "https://github.com/turtlco/docling-core.git?rev=main#299cce753210760a0910621493e59db0eb4c0ce9" }
 dependencies = [
     { name = "jsonref" },
     { name = "jsonschema" },

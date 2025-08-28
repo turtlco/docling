@@ -71,7 +71,7 @@ class PagePreprocessingModel(BasePageModel):
 
         page.parsed_page = page._backend.get_segmented_page()
         assert page.parsed_page is not None
-
+            
         # Rate the text quality from the PDF parser, and aggregate on page
         text_scores = []
         for c in page.cells:
