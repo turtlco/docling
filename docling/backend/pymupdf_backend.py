@@ -374,8 +374,6 @@ class PyMuPdfPageBackend(PdfPageBackend):
 
         dimension = _page_geometry_from_pymupdf(self._page, angle=angle)
         
-        # Get the background color
-        background_color = self.get_background_color()
         
         segmented_page = SegmentedPdfPage(
             dimension=dimension,
