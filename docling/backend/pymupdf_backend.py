@@ -152,8 +152,8 @@ class PyMuPdfPageBackend(PdfPageBackend):
             "monospaced": monospaced,
             "subset": subset,
             "weight": weight,
-            "lineHeight": round(line_height, 2),
-            "spaceAfter": round(space_after, 2)
+            "line_height": round(line_height, 2),
+            "space_after": round(space_after, 2)
         }
         
         # Only add alt_family_name if it exists and is different from font_family
