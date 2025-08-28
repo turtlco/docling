@@ -4,6 +4,46 @@
   </a>
 </p>
 
+# Turtl's Docling
+
+## Debugging with VSCode and uv
+
+To debug this Python application line by line in VSCode when using uv:
+
+1. Create a `.vscode/launch.json` file (this file is in .gitignore)
+2. Copy this configuration into the file:
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Docling CLI with uv",
+            "type": "python",
+            "request": "launch",
+            "module": "docling.cli.main",
+            "args": ["${input:inputFile}", "--to", "json", "--output", "${workspaceFolder}/output"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "pythonPath": "${workspaceFolder}/.venv/bin/python",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "inputFile",
+            "type": "promptString",
+            "description": "PDF file to process",
+            "default": "turtl-pdfs/BEUC-page.pdf"
+        }
+    ]
+}
+```
+3. Set breakpoints by clicking in the gutter next to line numbers
+4. Press F5 or click the Run/Debug icon to start debugging
+5. Use F10 to step over, F11 to step into functions
+
 # Docling
 
 <p align="center">

@@ -66,6 +66,7 @@ class PyMuPdfPageBackend(PdfPageBackend):
         self.document_hash = document_hash
         self.page_no = page_no
         self.valid = self._page is not None
+        self._background_color = None
 
     def _color_int_to_hex(self, color_int: int) -> str:
         """Convert PyMuPDF color integer to hex string."""
@@ -73,6 +74,61 @@ class PyMuPdfPageBackend(PdfPageBackend):
         g = (color_int >> 8) & 0xFF
         b = color_int & 0xFF
         return f"#{r:02x}{g:02x}{b:02x}"
+        
+    def get_background_color(self) -> str:
+        """Extract the background color of the page.
+        
+        Returns:
+            A hex string representing the most common color in the page,
+            which is likely to be the background color.
+        """
+        if self._background_color is not None:
+            return self._background_color
+            
+        if not self._page:
+            return "#ffffff"  # Default white if page is invalid
+            
+        try:
+            with pymupdf_lock:
+                # Render the page at a lower resolution for performance
+                # 72 dpi is usually sufficient to detect the background color
+                pix = self._page.get_pixmap(matrix=fitz.Matrix(72/300, 72/300), alpha=False)
+                
+                # Get the pixel data
+                width = pix.width
+                height = pix.height
+                
+                # Sample pixels from the corners and center of the page
+                # This is more efficient than analyzing all pixels
+                sample_points = [
+                    (0, 0),                    # Top-left
+                    (width-1, 0),              # Top-right
+                    (0, height-1),             # Bottom-left
+                    (width-1, height-1),       # Bottom-right
+                    (width//2, height//2),     # Center
+                    (width//4, height//4),     # Upper-left quadrant
+                    (3*width//4, height//4),   # Upper-right quadrant
+                    (width//4, 3*height//4),   # Lower-left quadrant
+                    (3*width//4, 3*height//4), # Lower-right quadrant
+                ]
+                
+                colors = []
+                for x, y in sample_points:
+                    pixel = pix.pixel(x, y)
+                    r, g, b = pixel[:3]  # Take first 3 values (RGB)
+                    colors.append(f"#{r:02x}{g:02x}{b:02x}")
+                
+                # Count occurrences of each color
+                from collections import Counter
+                color_counts = Counter(colors)
+                
+                # Get the most common color
+                self._background_color = color_counts.most_common(1)[0][0]
+                
+                return self._background_color
+        except Exception as e:
+            _log.warning(f"Error extracting background color: {e}")
+            return "#ffffff"  # Default to white on error
 
     def _create_bounding_box(self, bbox_tuple: tuple, coord_origin: CoordOrigin = CoordOrigin.TOPLEFT) -> BoundingBox:
         """Create BoundingBox from tuple with consistent coordinate origin."""
@@ -317,7 +373,10 @@ class PyMuPdfPageBackend(PdfPageBackend):
             angle = float(getattr(self._page, "rotation", 0) or 0)
 
         dimension = _page_geometry_from_pymupdf(self._page, angle=angle)
-
+        
+        # Get the background color
+        background_color = self.get_background_color()
+        
         segmented_page = SegmentedPdfPage(
             dimension=dimension,
             textline_cells=text_cells,
@@ -326,6 +385,7 @@ class PyMuPdfPageBackend(PdfPageBackend):
             has_textlines=len(text_cells) > 0,
             has_words=len(word_cells) > 0,
             has_chars=False,
+            background_color=background_color,
         )
         
         return segmented_page
