@@ -177,7 +177,7 @@ class PageAssembleModel(BasePageModel):
                                 text=text,
                                 page_no=page.page_no,
                                 cluster=cluster,
-                                font_metadata=font_metadata if font_metadata else None,
+                                font_metadata=font_metadata,
                                 background_color=background_color,
                             )
                             elements.append(text_el)
