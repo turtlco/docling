@@ -40,9 +40,12 @@ class PdfPageBackend(ABC):
     def get_size(self) -> Size:
         pass
 
-    @abstractmethod
     def get_metadata(self) -> Dict[str, Any]:
-        pass
+        """Get page metadata. Default implementation returns empty dict.
+        
+        Subclasses can override this method to provide specific metadata.
+        """
+        return {}
 
     @abstractmethod
     def is_valid(self) -> bool:
