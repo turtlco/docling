@@ -35,6 +35,7 @@ To debug this Python application line by line in VSCode when using uv:
                 "--output",
                 "${workspaceFolder}/output",
                 "--debug-visualize-cells",
+                "--debug-visualize-layout",
                 "--pdf-backend",
                 "pymupdf",
                 "--no-ocr"
