@@ -446,6 +446,7 @@ class ReadingOrderModel:
         )
         new_item.text += f" {merged_elem.text}"
         new_item.orig += f" {merged_elem.text}"  # TODO: This is incomplete, we don't have the `orig` field of the merged element.
+        new_item.font_metadata.extend(merged_elem.font_metadata)
         new_item.prov.append(prov)
 
     def __call__(self, conv_res: ConversionResult) -> DoclingDocument:
