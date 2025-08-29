@@ -144,6 +144,9 @@ class PyMuPdfPageBackend(PdfPageBackend):
     def _extract_region_background_color(self, bbox: tuple) -> str:
         """Extract background color for a specific region on the page.
         
+        This method attempts to find the true background color by sampling pixels
+        from areas likely to contain background rather than text or decorations.
+        
         Args:
             bbox: Bounding box tuple (l, t, r, b)
             
@@ -164,34 +167,72 @@ class PyMuPdfPageBackend(PdfPageBackend):
                 if width < 1 or height < 1:
                     return "#ffffff"
                     
-                # Create a matrix for the region
-                matrix = fitz.Matrix(1, 1)  # 1:1 scale
+                # Create a matrix for the region with higher resolution for better sampling
+                matrix = fitz.Matrix(2, 2)  # 2x scale for better accuracy
                 clip_rect = fitz.Rect(l, t, r, b)
                 
                 # Get pixmap for the region
                 pix = self._page.get_pixmap(matrix=matrix, clip=clip_rect, alpha=False)
                 
-                # Sample pixels from the region
-                sample_points = [
-                    (0, 0),                    # Top-left
-                    (pix.width-1, 0),         # Top-right
-                    (0, pix.height-1),        # Bottom-left
-                    (pix.width-1, pix.height-1), # Bottom-right
-                    (pix.width//2, pix.height//2), # Center
-                ]
+                # Strategy: Sample from edges and corners where background is most likely
+                # Avoid center and bottom areas where text and decorations typically appear
+                margin = max(1, min(pix.width, pix.height) // 10)  # 10% margin from edges
                 
+                sample_points = []
+                
+                # Top edge samples (avoiding text baseline)
+                for x in range(margin, pix.width - margin, max(1, pix.width // 8)):
+                    sample_points.extend([
+                        (x, margin),  # Top edge with small margin
+                        (x, margin * 2),  # Slightly lower
+                    ])
+                
+                # Side edge samples (avoiding text area)
+                for y in range(margin, pix.height // 2, max(1, pix.height // 6)):
+                    sample_points.extend([
+                        (margin, y),  # Left edge
+                        (pix.width - margin - 1, y),  # Right edge
+                    ])
+                
+                # Corner samples (most likely to be background)
+                corner_margin = max(2, margin)
+                sample_points.extend([
+                    (corner_margin, corner_margin),  # Top-left
+                    (pix.width - corner_margin - 1, corner_margin),  # Top-right
+                ])
+                
+                # Collect colors from valid sample points
                 colors = []
                 for x, y in sample_points:
                     if 0 <= x < pix.width and 0 <= y < pix.height:
-                        pixel = pix.pixel(x, y)
-                        r, g, b = pixel[:3]  # Take first 3 values (RGB)
-                        colors.append(f"#{r:02x}{g:02x}{b:02x}")
+                        try:
+                            pixel = pix.pixel(x, y)
+                            r, g, b = pixel[:3]  # Take first 3 values (RGB)
+                            colors.append(f"#{r:02x}{g:02x}{b:02x}")
+                        except:
+                            continue  # Skip invalid pixels
                 
                 if colors:
-                    # Return the most common color
+                    # Return the most common color, which should be background
                     from collections import Counter
                     color_counts = Counter(colors)
-                    return color_counts.most_common(1)[0][0]
+                    most_common = color_counts.most_common(2)  # Get top 2 colors
+                    
+                    # If we have multiple colors, prefer lighter ones (more likely background)
+                    if len(most_common) > 1:
+                        for color, count in most_common:
+                            # Convert hex to RGB to check lightness
+                            r = int(color[1:3], 16)
+                            g = int(color[3:5], 16) 
+                            b = int(color[5:7], 16)
+                            lightness = (r + g + b) / 3
+                            
+                            # Prefer colors with higher lightness (typical backgrounds)
+                            if lightness > 200:  # Light colors
+                                return color
+                    
+                    # Fallback to most common color
+                    return most_common[0][0]
                     
         except Exception as e:
             _log.debug(f"Error extracting region background color: {e}")
