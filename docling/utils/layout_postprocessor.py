@@ -219,6 +219,166 @@ class LayoutPostprocessor:
             [c for c in self.special_clusters if c.label in self.WRAPPER_TYPES]
         )
 
+    def _resolve_text_picture_conflicts(
+        self, 
+        regular_clusters: List[Cluster], 
+        special_clusters: List[Cluster]
+    ) -> Tuple[List[Cluster], List[Cluster]]:
+        """
+        Resolve conflicts between TEXT and PICTURE clusters that overlap significantly.
+        This prevents duplication where the same region is detected as both text and image.
+        """
+        
+        # Get TEXT clusters from regular clusters
+        text_clusters = [c for c in regular_clusters if c.label in [
+            DocItemLabel.TEXT,
+            DocItemLabel.SECTION_HEADER,
+            DocItemLabel.LIST_ITEM,
+            DocItemLabel.CAPTION,
+            DocItemLabel.FOOTNOTE,
+            DocItemLabel.CODE,
+            DocItemLabel.FORMULA
+        ]]
+        
+        # Get PICTURE clusters from special clusters
+        picture_clusters = [c for c in special_clusters if c.label == DocItemLabel.PICTURE]
+        
+        if not text_clusters or not picture_clusters:
+            return regular_clusters, special_clusters
+        
+        _log.info(f"Resolving conflicts between {len(text_clusters)} text clusters and {len(picture_clusters)} picture clusters")
+        
+        # Log all text clusters for debugging
+        for i, cluster in enumerate(text_clusters):
+            text_content = " ".join(cell.text.strip() for cell in cluster.cells if cell.text.strip())
+            _log.debug(f"TEXT cluster {cluster.id}: '{text_content}' (confidence: {cluster.confidence:.2f})")
+        
+        # Log all picture clusters for debugging  
+        for i, cluster in enumerate(picture_clusters):
+            _log.debug(f"PICTURE cluster {cluster.id}: confidence={cluster.confidence:.2f}, bbox={cluster.bbox}")
+        
+        clusters_to_remove = set()
+        
+        # Check each text cluster against each picture cluster
+        for text_cluster in text_clusters:
+            for picture_cluster in picture_clusters:
+                # Calculate overlap
+                overlap_ratio = text_cluster.bbox.intersection_over_union(picture_cluster.bbox)
+                
+                if overlap_ratio > 0.1:
+                    _log.debug(f"Conflict detected: TEXT cluster {text_cluster.id} vs PICTURE cluster {picture_cluster.id} (overlap: {overlap_ratio:.2f})")
+                    
+                    # Apply heuristics to decide which cluster to keep
+                    keep_text = self._should_keep_text_over_picture(text_cluster, picture_cluster)
+                    
+                    if keep_text:
+                        _log.info(f"Keeping TEXT cluster {text_cluster.id}, removing PICTURE cluster {picture_cluster.id}")
+                        clusters_to_remove.add(picture_cluster.id)
+                    else:
+                        _log.info(f"Keeping PICTURE cluster {picture_cluster.id}, removing TEXT cluster {text_cluster.id}")
+                        clusters_to_remove.add(text_cluster.id)
+        
+        # Filter out removed clusters
+        filtered_regular = [c for c in regular_clusters if c.id not in clusters_to_remove]
+        filtered_special = [c for c in special_clusters if c.id not in clusters_to_remove]
+        
+        _log.info(f"Removed {len(clusters_to_remove)} conflicting clusters")
+        
+        return filtered_regular, filtered_special
+    
+    def _should_keep_text_over_picture(self, text_cluster: Cluster, picture_cluster: Cluster) -> bool:
+        """
+        Heuristics to decide whether to keep TEXT or PICTURE cluster when they conflict.
+        Returns True if TEXT should be kept, False if PICTURE should be kept.
+        """
+        
+        # Heuristic 1: Confidence comparison
+        confidence_diff = text_cluster.confidence - picture_cluster.confidence
+        _log.debug(f"  Confidence: TEXT={text_cluster.confidence:.2f}, PICTURE={picture_cluster.confidence:.2f}, diff={confidence_diff:.2f}")
+        
+        # Heuristic 2: Check if text cluster has actual text content
+        has_text_content = len(text_cluster.cells) > 0 and any(
+            cell.text.strip() for cell in text_cluster.cells
+        )
+        _log.debug(f"  Has text content: {has_text_content}")
+        
+        # Heuristic 3: Analyze text characteristics
+        if has_text_content:
+            # Get combined text from all cells
+            combined_text = " ".join(cell.text.strip() for cell in text_cluster.cells if cell.text.strip())
+            text_length = len(combined_text)
+            
+            # Check for decorative text patterns
+            is_decorative = self._is_decorative_text(combined_text)
+            _log.debug(f"  Text: '{combined_text[:50]}...' (length: {text_length}, decorative: {is_decorative})")
+            
+            # If text is decorative (logo, short branding, etc.), prefer picture
+            if is_decorative:
+                _log.debug(f"  → PICTURE: Text appears decorative")
+                return False
+            
+            # If text is substantial content, prefer text
+            if text_length > 20:  # Substantial text content
+                _log.debug(f"  → TEXT: Substantial text content")
+                return True
+        
+        # Heuristic 4: Size analysis
+        text_area = text_cluster.bbox.area()
+        picture_area = picture_cluster.bbox.area()
+        area_ratio = text_area / picture_area if picture_area > 0 else 1
+        _log.debug(f"  Area ratio (text/picture): {area_ratio:.2f}")
+        
+        # If picture is much larger, it might be a complex graphic with some text
+        if area_ratio < 0.5:
+            _log.debug(f"  → PICTURE: Picture area much larger")
+            return False
+        
+        # Heuristic 5: Default based on confidence
+        if confidence_diff > 0.1:  # TEXT has significantly higher confidence
+            _log.debug(f"  → TEXT: Higher confidence")
+            return True
+        elif confidence_diff < -0.1:  # PICTURE has significantly higher confidence
+            _log.debug(f"  → PICTURE: Higher confidence")
+            return False
+        
+        # Default: prefer text for readability
+        _log.debug(f"  → TEXT: Default preference for readability")
+        return True
+    
+    def _is_decorative_text(self, text: str) -> bool:
+        """Check if text appears to be decorative (logos, branding, etc.)"""
+        import re
+        
+        text = text.strip()
+        
+        # Very short text is often decorative
+        if len(text) <= 3:
+            return True
+        
+        # Common decorative patterns
+        decorative_patterns = [
+            r'^[A-Z]{2,6}$',      # All caps abbreviations (IBM, PDF, etc.)
+            r'^\d{1,4}$',         # Pure numbers (2024, 9/10, etc.)
+            r'^[A-Z][a-z]+$',     # Single capitalized words (brand names)
+            r'^www\.',            # Web addresses
+            r'@',                 # Email addresses
+            r'^\$\d+',            # Price tags
+            r'^\d+%$',            # Percentages
+            r'^[A-Z\s]{2,15}$',   # Short all-caps phrases (logos)
+        ]
+        
+        for pattern in decorative_patterns:
+            if re.match(pattern, text):
+                return True
+        
+        # Check for logo-like characteristics
+        words = text.split()
+        if len(words) <= 2 and all(len(word) <= 8 for word in words):
+            # Short phrases with short words are often logos/branding
+            return True
+        
+        return False
+    
     def postprocess(self) -> Tuple[List[Cluster], List[TextCell]]:
         """Main processing pipeline."""
         self.regular_clusters = self._process_regular_clusters()
@@ -319,6 +479,10 @@ class LayoutPostprocessor:
         ]
 
         special_clusters = self._handle_cross_type_overlaps(special_clusters)
+        
+        self.regular_clusters, special_clusters = self._resolve_text_picture_conflicts(
+            self.regular_clusters, special_clusters
+        )
 
         # Calculate page area from known page size
         assert self.page_size is not None
