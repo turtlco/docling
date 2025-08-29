@@ -329,11 +329,9 @@ class PyMuPdfPageBackend(PdfPageBackend):
                 # Extract font information directly from spans
                 font_metadata = []
                 for span_idx, span in enumerate(spans):
-                    text = span.get("text", "").strip()
-                    if not text:
-                        continue
-                    
-                    font_metadata.append(self._create_font_metadata(span, text, span_idx, line))
+                    span_text = span.get("text", "")
+                    if span_text:
+                        font_metadata.append(self._create_font_metadata(span, span_text.strip(), span_idx, line))
                 
                 # Create a TextCell with the text content and font info
                 cell = self._create_text_cell(cell_counter, text_content, bbox_tl, font_metadata)
