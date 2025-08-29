@@ -38,7 +38,8 @@ To debug this Python application line by line in VSCode when using uv:
                 "--debug-visualize-layout",
                 "--pdf-backend",
                 "pymupdf",
-                "--no-ocr"
+                "--no-ocr",
+                "-vv"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
