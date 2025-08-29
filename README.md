@@ -18,8 +18,9 @@ uv sync
 
 To debug this Python application line by line in VSCode when using uv:
 
-1. Create a `.vscode/launch.json` file (this file is in .gitignore)
-2. Copy this configuration into the file:
+1. Install Python Debugger extension in VSCode.
+2. Create a `.vscode/launch.json` file (this file is in .gitignore)
+3. Copy this configuration into the file:
 ```json
 {
     "version": "0.2.0",
@@ -59,9 +60,9 @@ To debug this Python application line by line in VSCode when using uv:
     ]
 }
 ```
-3. Set breakpoints by clicking in the gutter next to line numbers
-4. Press F5 or click the Run/Debug icon to start debugging
-5. Use F10 to step over, F11 to step into functions
+4. Set breakpoints by clicking in the gutter next to line numbers
+5. Press F5 or click the Run/Debug icon to start debugging
+6. Use F10 to step over, F11 to step into functions
 
 # Docling
 
