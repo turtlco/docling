@@ -450,6 +450,10 @@ def convert(  # noqa: C901
             ..., help="Enable debug output which visualizes the layour clusters"
         ),
     ] = False,
+    debug_visualize_raw_layout: Annotated[
+        bool,
+        typer.Option(..., help="Enable debug output which visualizes the raw layout"),
+    ] = False,
     debug_visualize_tables: Annotated[
         bool,
         typer.Option(..., help="Enable debug output which visualizes the table cells"),
@@ -499,6 +503,7 @@ def convert(  # noqa: C901
 
     settings.debug.visualize_cells = debug_visualize_cells
     settings.debug.visualize_layout = debug_visualize_layout
+    settings.debug.visualize_raw_layout = debug_visualize_raw_layout
     settings.debug.visualize_tables = debug_visualize_tables
     settings.debug.visualize_ocr = debug_visualize_ocr
     settings.perf.page_batch_size = page_batch_size

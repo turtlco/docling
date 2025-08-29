@@ -29,7 +29,8 @@ To debug this Python application line by line in VSCode when using uv:
             "name": "Python: Docling CLI with uv",
             "type": "python",
             "request": "launch",
-            "module": "docling.cli.main",            "args": [
+            "module": "docling.cli.main",
+            "args": [
                 "${input:inputFile}",
                 "--to",
                 "json",
@@ -37,6 +38,7 @@ To debug this Python application line by line in VSCode when using uv:
                 "${workspaceFolder}/output",
                 "--debug-visualize-cells",
                 "--debug-visualize-layout",
+                "--debug-visualize-raw-layout",
                 "--pdf-backend",
                 "pymupdf",
                 "--no-ocr",
