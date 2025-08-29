@@ -51,15 +51,6 @@ class PdfPageBackend(ABC):
     @abstractmethod
     def unload(self):
         pass
-        
-    def get_background_color(self) -> str:
-        """Extract the background color of the page.
-        
-        Returns:
-            A hex string representing the background color.
-            Default implementation returns white.
-        """
-        return "#ffffff"  # Default white
 
 
 class PdfDocumentBackend(PaginatedDocumentBackend):

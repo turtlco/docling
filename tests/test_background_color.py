@@ -34,7 +34,7 @@ def test_background_color_extraction():
     page = backend.load_page(0)
     
     # Get background color
-    bg_color = page.get_background_color()
+    bg_color = page._get_background_color()
     
     # Check that we got a color in hex format
     assert isinstance(bg_color, str)

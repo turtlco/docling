@@ -75,7 +75,7 @@ class PyMuPdfPageBackend(PdfPageBackend):
         b = color_int & 0xFF
         return f"#{r:02x}{g:02x}{b:02x}"
         
-    def get_background_color(self) -> str:
+    def _get_background_color(self) -> str:
         """Extract the background color of the page.
         
         Returns:
@@ -497,7 +497,7 @@ class PyMuPdfPageBackend(PdfPageBackend):
         
     def get_metadata(self) -> Dict[str, Any]:
         return {
-            'background_color': self.get_background_color()
+            'background_color': self._get_background_color()
         }
 
     def unload(self):
