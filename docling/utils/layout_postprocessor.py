@@ -248,15 +248,6 @@ class LayoutPostprocessor:
         
         _log.info(f"Resolving conflicts between {len(text_clusters)} text clusters and {len(picture_clusters)} picture clusters")
         
-        # Log all text clusters for debugging
-        for i, cluster in enumerate(text_clusters):
-            text_content = " ".join(cell.text.strip() for cell in cluster.cells if cell.text.strip())
-            _log.debug(f"TEXT cluster {cluster.id}: '{text_content}' (confidence: {cluster.confidence:.2f})")
-        
-        # Log all picture clusters for debugging  
-        for i, cluster in enumerate(picture_clusters):
-            _log.debug(f"PICTURE cluster {cluster.id}: confidence={cluster.confidence:.2f}, bbox={cluster.bbox}")
-        
         clusters_to_remove = set()
         
         # Check each text cluster against each picture cluster
@@ -265,7 +256,7 @@ class LayoutPostprocessor:
                 # Calculate overlap
                 overlap_ratio = text_cluster.bbox.intersection_over_union(picture_cluster.bbox)
                 
-                if overlap_ratio > 0.1:
+                if overlap_ratio > 0.05:
                     _log.debug(f"Conflict detected: TEXT cluster {text_cluster.id} vs PICTURE cluster {picture_cluster.id} (overlap: {overlap_ratio:.2f})")
                     
                     # Apply heuristics to decide which cluster to keep
