@@ -1071,7 +1071,7 @@ requires-dist = [
     { name = "accelerate", marker = "extra == 'vlm'", specifier = ">=1.2.1,<2.0.0" },
     { name = "beautifulsoup4", specifier = ">=4.12.3,<5.0.0" },
     { name = "certifi", specifier = ">=2024.7.4" },
-    { name = "docling-core", extras = ["chunking"], git = "https://github.com/turtlco/docling-core.git?rev=main" },
+    { name = "docling-core", extras = ["chunking"], git = "https://github.com/turtlco/docling-core.git?rev=add-missing-props" },
     { name = "docling-ibm-models", specifier = ">=3.9.0,<4" },
     { name = "docling-parse", specifier = ">=4.2.2,<5.0.0" },
     { name = "easyocr", specifier = ">=1.7,<2.0" },
@@ -1150,7 +1150,7 @@ examples = [
 [[package]]
 name = "docling-core"
 version = "2.45.0"
-source = { git = "https://github.com/turtlco/docling-core.git?rev=main#1a823668e3b2d4b8aba1ac3d5abec6cea05fbe02" }
+source = { git = "https://github.com/turtlco/docling-core.git?rev=add-missing-props#cdf7ae9d0c3bfed0331b7972775aafa24ae7a32d" }
 dependencies = [
     { name = "jsonref" },
     { name = "jsonschema" },

@@ -265,6 +265,54 @@ class TableStructureModel(BasePageModel):
                                 tc = TableCell.model_validate(element)
                                 if tc.bbox is not None:
                                     tc.bbox = tc.bbox.scaled(1 / self.scale)
+
+                                # Enrich table cell with font metadata and background color
+                                font_metadata_list = []
+                                background_color = None
+                                try:
+                                    # Prefer WORD-level cells from segmented page if available
+                                    if sp is not None and tc.bbox is not None:
+                                        word_cells = sp.get_cells_in_bbox(
+                                            cell_unit=TextCellUnit.WORD,
+                                            bbox=tc.bbox,
+                                        )
+                                        candidates = word_cells if len(word_cells) else []
+                                    else:
+                                        candidates = []
+
+                                    # Fall back to cluster cells intersecting the cell bbox
+                                    if not candidates and tc.bbox is not None:
+                                        def _intersects(bb1: BoundingBox, bb2: BoundingBox) -> bool:
+                                            return not (
+                                                bb1.r <= bb2.l or bb1.l >= bb2.r or bb1.b <= bb2.t or bb1.t >= bb2.b
+                                            )
+
+                                        for c in table_cluster.cells:
+                                            try:
+                                                c_bb = c.rect.to_bounding_box()
+                                                if _intersects(c_bb, tc.bbox):
+                                                    candidates.append(c)
+                                            except Exception:
+                                                continue
+
+                                    # Collect font metadata and infer background color
+                                    for c in candidates:
+                                        if hasattr(c, "font_metadata") and getattr(c, "font_metadata"):
+                                            font_metadata_list.extend(getattr(c, "font_metadata"))
+                                            if background_color is None:
+                                                for meta in getattr(c, "font_metadata"):
+                                                    if isinstance(meta, dict) and meta.get("background_color"):
+                                                        background_color = meta.get("background_color")
+                                                        break
+                                except Exception:
+                                    # Keep enrichment best-effort; ignore failures
+                                    pass
+
+                                if font_metadata_list:
+                                    tc.font_metadata = font_metadata_list
+                                if background_color is not None:
+                                    tc.background_color = background_color
+
                                 table_cells.append(tc)
 
                             assert "predict_details" in table_out
