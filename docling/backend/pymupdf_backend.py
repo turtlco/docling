@@ -212,25 +212,22 @@ class PyMuPdfPageBackend(PdfPageBackend):
             return links
         try:
             with pymupdf_lock:
+                # 1) Standard link annotations
                 for lnk in self._page.get_links():
                     rect: fitz.Rect = lnk.get("from")
                     if not rect:
                         continue
-                    # Normalize rectangle to (l, t, r, b) floats (PyMuPDF gives page coordinates consistent with text dict top-left origin here)
                     l, t, r, b = float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1)
                     info: Dict[str, Any] = {
                         "rect": (l, t, r, b),
-                        "kind": lnk.get("kind"),
+                        "kind": lnk.get("kind") or "LINK",
                     }
-                    # External URL
                     uri = lnk.get("uri")
                     if uri:
                         info["uri"] = uri
-                    # Internal goto
                     page = lnk.get("page")
                     dest = lnk.get("to") or lnk.get("dest")
                     if page is not None or dest is not None:
-                        # PyMuPDF page index is 0-based
                         info["page"] = int(page) if page is not None else None
                         if dest is not None and isinstance(dest, (list, tuple)) and len(dest) >= 2:
                             info["point"] = {"x": float(dest[0]), "y": float(dest[1])}
@@ -240,11 +237,130 @@ class PyMuPdfPageBackend(PdfPageBackend):
                         if zoom is not None:
                             info["zoom"] = float(zoom)
                     links.append(info)
+
+                # 2) Button-like widgets (form controls) with actions
+                try:
+                    # Iterate annotations: some widgets carry actions under 'A' or 'AA'
+                    annot = self._page.first_annot
+                    while annot is not None:
+                        try:
+                            tname = None
+                            try:
+                                t = annot.type
+                                if isinstance(t, (tuple, list)) and len(t) >= 2:
+                                    tname = t[1]
+                            except Exception:
+                                tname = None
+
+                            if tname not in ("Widget", "Link"):
+                                annot = annot.next
+                                continue
+
+                            rect = getattr(annot, "rect", None)
+                            if rect is None:
+                                annot = annot.next
+                                continue
+                            l, t, r, b = float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1)
+
+                            # Direct URI on Link annotations (redundant but safe)
+                            if tname == "Link":
+                                uri = None
+                                try:
+                                    uri = annot.uri
+                                except Exception:
+                                    uri = None
+                                if uri:
+                                    links.append({
+                                        "rect": (l, t, r, b),
+                                        "kind": "LINK",
+                                        "uri": uri,
+                                    })
+                                # Continue to next annot
+                                annot = annot.next
+                                continue
+
+                            # For Widget: try to parse action dictionaries
+                            info_dict = {}
+                            try:
+                                info_dict = annot.info or {}
+                            except Exception:
+                                info_dict = {}
+
+                            def _extract_action_link(action_obj: Any) -> Optional[Dict[str, Any]]:
+                                if not isinstance(action_obj, dict):
+                                    return None
+                                # External URI
+                                uri = action_obj.get("URI") or action_obj.get("F")
+                                if uri:
+                                    return {
+                                        "rect": (l, t, r, b),
+                                        "kind": "WIDGET",
+                                        "uri": str(uri),
+                                    }
+                                # Internal GoTo destination: D or Dest
+                                dest = action_obj.get("D") or action_obj.get("Dest")
+                                if dest is not None:
+                                    link: Dict[str, Any] = {
+                                        "rect": (l, t, r, b),
+                                        "kind": "WIDGET",
+                                    }
+                                    # We cannot reliably resolve page index from dest here without deeper doc parsing
+                                    # so we only keep structure; later resolution may attach ref if possible
+                                    if isinstance(dest, (list, tuple)) and len(dest) >= 3:
+                                        # Expect [page-ref or number, /XYZ, x, y, zoom]
+                                        try:
+                                            x = float(dest[-3])
+                                            y = float(dest[-2])
+                                            link["point"] = {"x": x, "y": y}
+                                        except Exception:
+                                            pass
+                                    return link
+                                return None
+
+                            # Primary action dictionary
+                            a = info_dict.get("A")
+                            link_info = _extract_action_link(a) if a is not None else None
+                            if not link_info:
+                                # Additional actions dict may include event keys
+                                aa = info_dict.get("AA")
+                                if isinstance(aa, dict):
+                                    for v in aa.values():
+                                        link_info = _extract_action_link(v)
+                                        if link_info:
+                                            break
+                            if link_info:
+                                links.append(link_info)
+                        except Exception:
+                            # ignore annot-level errors
+                            pass
+                        finally:
+                            annot = annot.next
+                except Exception:
+                    # If annotation API not available, skip
+                    pass
         except Exception:
             # Best-effort: ignore link extraction errors
             pass
-        self._links_cache = links
-        return links
+
+        # De-duplicate links based on (rect, uri/page/point)
+        dedup: List[Dict[str, Any]] = []
+        seen: set = set()
+        for li in links:
+            rect = tuple(li.get("rect", (0, 0, 0, 0)))
+            key: tuple
+            if "uri" in li and li["uri"]:
+                key = (rect, "uri", str(li["uri"]))
+            elif "page" in li or "point" in li:
+                key = (rect, "dest", str(li.get("page")), str(li.get("point")))
+            else:
+                key = (rect, "other")
+            if key in seen:
+                continue
+            seen.add(key)
+            dedup.append(li)
+
+        self._links_cache = dedup
+        return dedup
 
     def get_links(self) -> List[Dict[str, Any]]:
         return self._load_links()
