@@ -216,7 +216,7 @@ class PyMuPdfPageBackend(PdfPageBackend):
                     rect: fitz.Rect = lnk.get("from")
                     if not rect:
                         continue
-                    # Normalize rectangle to (l, t, r, b) floats
+                    # Normalize rectangle to (l, t, r, b) floats (PyMuPDF gives page coordinates consistent with text dict top-left origin here)
                     l, t, r, b = float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1)
                     info: Dict[str, Any] = {
                         "rect": (l, t, r, b),
@@ -246,47 +246,69 @@ class PyMuPdfPageBackend(PdfPageBackend):
         self._links_cache = links
         return links
 
+    def get_links(self) -> List[Dict[str, Any]]:
+        return self._load_links()
+
     def _rects_intersect(self, a: tuple, b: tuple) -> bool:
         al, at, ar, ab = a
         bl, bt, br, bb = b
         return not (ar <= bl or br <= al or ab <= bt or bb <= at)
 
+    def _overlap_area(self, a: tuple, b: tuple) -> float:
+        al, at, ar, ab = a
+        bl, bt, br, bb = b
+        ol = max(al, bl)
+        ot = max(at, bt)
+        or_ = min(ar, br)
+        ob = min(ab, bb)
+        return max(0.0, or_ - ol) * max(0.0, ob - ot)
+
     def _best_link_for_bbox(self, bbox: List[float], links: List[Dict[str, Any]]) -> Optional[Union[str, Dict[str, Any]]]:
-        """Find the most likely link overlapping the given bbox.
+        """Find the most likely link overlapping the given bbox using robust heuristics.
+        Priority: center-in-rect; fallback to max overlap with minimum area ratio.
         Returns None, a URL string, or an internal link dict.
         """
-        if not links:
+        if not links or not bbox or len(bbox) != 4:
             return None
         bl, bt, br, bb = bbox
-        best_area = 0.0
-        best: Optional[Dict[str, Any]] = None
+        cx = (bl + br) / 2.0
+        cy = (bt + bb) / 2.0
+        # First pass: center-in-rect
         for lnk in links:
             rl, rt, rr, rb = lnk["rect"]
-            if not self._rects_intersect((bl, bt, br, bb), (rl, rt, rr, rb)):
-                continue
-            # Overlap area heuristic
-            ol = max(bl, rl)
-            ot = max(bt, rt)
-            or_ = min(br, rr)
-            ob = min(bb, rb)
-            area = max(0.0, or_ - ol) * max(0.0, ob - ot)
+            if rl <= cx <= rr and rt <= cy <= rb:
+                if lnk.get("uri"):
+                    return lnk["uri"]
+                link_obj: Dict[str, Any] = {"type": "internal"}
+                if "page" in lnk and lnk["page"] is not None:
+                    link_obj["page"] = int(lnk["page"]) + 1
+                if lnk.get("point"):
+                    link_obj["point"] = {"x": lnk["point"]["x"], "y": lnk["point"]["y"]}
+                if lnk.get("zoom") is not None:
+                    link_obj["zoom"] = lnk["zoom"]
+                return link_obj
+        # Second pass: max overlap with threshold to avoid spurious large overlays
+        span_area = max(1e-6, (br - bl) * (bb - bt))
+        best = None
+        best_area = 0.0
+        for lnk in links:
+            area = self._overlap_area((bl, bt, br, bb), lnk["rect"])
             if area > best_area:
                 best_area = area
                 best = lnk
-        if not best:
-            return None
-        if best.get("uri"):
-            return best["uri"]
-        # Build internal link object
-        link_obj: Dict[str, Any] = {"type": "internal"}
-        if "page" in best and best["page"] is not None:
-            # Use 1-based page number like other public surfaces
-            link_obj["page"] = int(best["page"]) + 1
-        if best.get("point"):
-            link_obj["point"] = {"x": best["point"]["x"], "y": best["point"]["y"]}
-        if best.get("zoom") is not None:
-            link_obj["zoom"] = best["zoom"]
-        return link_obj
+        # Require at least 20% overlap of the span area
+        if best and (best_area / span_area) >= 0.2:
+            if best.get("uri"):
+                return best["uri"]
+            link_obj = {"type": "internal"}
+            if "page" in best and best["page"] is not None:
+                link_obj["page"] = int(best["page"]) + 1
+            if best.get("point"):
+                link_obj["point"] = {"x": best["point"]["x"], "y": best["point"]["y"]}
+            if best.get("zoom") is not None:
+                link_obj["zoom"] = best["zoom"]
+            return link_obj
+        return None
 
     def _create_font_metadata(self, span: dict, text: str, span_idx: int = 0, line: dict = None) -> dict:
         """Create font metadata dictionary from a span."""

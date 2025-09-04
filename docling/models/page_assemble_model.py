@@ -1,7 +1,7 @@
 import logging
 import re
 from collections.abc import Iterable
-from typing import List
+from typing import List, Optional, Dict, Any
 
 import numpy as np
 from pydantic import BaseModel
@@ -145,6 +145,58 @@ class PageAssembleModel(BasePageModel):
 
         return sanitized_text.strip()  # Strip any leading or trailing whitespace
 
+    def _overlap_area(self, a: List[float], b: List[float]) -> float:
+        al, at, ar, ab = a
+        bl, bt, br, bb = b
+        ol = max(al, bl)
+        ot = max(at, bt)
+        or_ = min(ar, br)
+        ob = min(ab, bb)
+        return max(0.0, or_ - ol) * max(0.0, ob - ot)
+
+    def _best_link_for_bbox(self, bbox: List[float], links: List[Dict[str, Any]]) -> Optional[Optional[Dict[str, Any]]]:
+        if not links or not bbox or len(bbox) != 4:
+            return None
+        bl, bt, br, bb = bbox
+        cx = (bl + br) / 2.0
+        cy = (bt + bb) / 2.0
+        # First pass: center-in-rect
+        for lnk in links:
+            rl, rt, rr, rb = lnk.get("rect", (0, 0, 0, 0))
+            if rl <= cx <= rr and rt <= cy <= rb:
+                if lnk.get("uri"):
+                    return lnk["uri"]
+                link_obj: Dict[str, Any] = {"type": "internal"}
+                if lnk.get("page") is not None:
+                    link_obj["page"] = int(lnk["page"]) + 1
+                if lnk.get("point"):
+                    link_obj["point"] = {"x": lnk["point"]["x"], "y": lnk["point"]["y"]}
+                if lnk.get("zoom") is not None:
+                    link_obj["zoom"] = lnk["zoom"]
+                return link_obj
+        # Second pass: max overlap ratio
+        span_area = max(1e-6, (br - bl) * (bb - bt))
+        best = None
+        best_area = 0.0
+        for lnk in links:
+            rl, rt, rr, rb = lnk.get("rect", (0, 0, 0, 0))
+            area = self._overlap_area([bl, bt, br, bb], [rl, rt, rr, rb])
+            if area > best_area:
+                best_area = area
+                best = lnk
+        if best and (best_area / span_area) >= 0.2:
+            if best.get("uri"):
+                return best["uri"]
+            link_obj: Dict[str, Any] = {"type": "internal"}
+            if best.get("page") is not None:
+                link_obj["page"] = int(best["page"]) + 1
+            if best.get("point"):
+                link_obj["point"] = {"x": best["point"]["x"], "y": best["point"]["y"]}
+            if best.get("zoom") is not None:
+                link_obj["zoom"] = best["zoom"]
+            return link_obj
+        return None
+
     def __call__(
         self, conv_res: ConversionResult, page_batch: Iterable[Page]
     ) -> Iterable[Page]:
@@ -161,6 +213,13 @@ class PageAssembleModel(BasePageModel):
                     elements: List[PageElement] = []
                     headers: List[PageElement] = []
                     body: List[PageElement] = []
+
+                    # Preload page links for assigning to figures/images
+                    page_links = []
+                    try:
+                        page_links = page._backend.get_links() or []
+                    except Exception:
+                        page_links = []
 
                     for cluster in page.predictions.layout.clusters:
                         # _log.info("Cluster label seen:", cluster.label)
@@ -232,6 +291,15 @@ class PageAssembleModel(BasePageModel):
                                     cluster=cluster,
                                     page_no=page.page_no,
                                 )
+                            # Assign link to figure based on cluster bbox and page link rects
+                            try:
+                                # cluster.bbox is TOPLEFT origin; links rects are TOPLEFT as well
+                                l, t, r, b = cluster.bbox.as_tuple()
+                                link_val = self._best_link_for_bbox([l, t, r, b], page_links)
+                                if link_val is not None:
+                                    fig.link = link_val
+                            except Exception:
+                                pass
                             elements.append(fig)
                             body.append(fig)
                         elif cluster.label in LayoutModel.CONTAINER_LABELS:

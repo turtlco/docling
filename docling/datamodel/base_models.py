@@ -214,6 +214,8 @@ class FigureElement(BasePageElement):
     provenance: Optional[str] = None
     predicted_class: Optional[str] = None
     confidence: Optional[float] = None
+    # Attach hyperlink if the figure/image is clickable
+    link: Optional[Union[str, Dict[str, Any]]] = None
 
     @field_serializer("confidence")
     def _serialize(

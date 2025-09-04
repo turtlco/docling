@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 from docling_core.types.doc import BoundingBox, Size
 from docling_core.types.doc.page import SegmentedPdfPage, TextCell
@@ -42,10 +42,17 @@ class PdfPageBackend(ABC):
 
     def get_metadata(self) -> Dict[str, Any]:
         """Get page metadata. Default implementation returns empty dict.
-        
+
         Subclasses can override this method to provide specific metadata.
         """
         return {}
+
+    def get_links(self) -> List[Dict[str, Any]]:
+        """Return a list of link annotations on this page.
+        Default implementation returns an empty list; concrete backends may override.
+        Each entry should include a 'rect': (l,t,r,b) in TOPLEFT origin and either 'uri' or internal link info.
+        """
+        return []
 
     @abstractmethod
     def is_valid(self) -> bool:
