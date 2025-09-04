@@ -75,7 +75,7 @@ class ReadingOrderModel:
         return elements
 
     def _add_child_elements(
-        self, element: BasePageElement, doc_item: NodeItem, doc: DoclingDocument
+        self, element: BasePageElement, doc_item: NodeItem, doc: DoclingDocument, created_items: List[NodeItem]
     ):
         child: Cluster
         for child in element.cluster.children:
@@ -113,6 +113,7 @@ class ReadingOrderModel:
                     font_metadata=font_metadata,
                     background_color=background_color
                 )
+                created_items.append(l_item)
                 self.list_item_processor.process_list_item(l_item)
             elif c_label == DocItemLabel.SECTION_HEADER:
                 # Collect font_metadata from cells
@@ -121,13 +122,14 @@ class ReadingOrderModel:
                     if hasattr(cell, 'font_metadata') and cell.font_metadata:
                         font_metadata.extend(cell.font_metadata)
                         
-                doc.add_heading(
-                    parent=doc_item, 
+                h_item = doc.add_heading(
+                    parent=doc_item,
                     text=c_text, 
                     prov=c_prov,
                     font_metadata=font_metadata,
                     background_color=background_color
                 )
+                created_items.append(h_item)
             else:
                 # Collect font_metadata from cells
                 font_metadata = []
@@ -135,15 +137,16 @@ class ReadingOrderModel:
                     if hasattr(cell, 'font_metadata') and cell.font_metadata:
                         font_metadata.extend(cell.font_metadata)
                         
-                doc.add_text(
-                    parent=doc_item, 
+                t_item = doc.add_text(
+                    parent=doc_item,
                     label=c_label, 
                     text=c_text, 
                     prov=c_prov,
                     font_metadata=font_metadata,
                     background_color=background_color
                 )
-    
+                created_items.append(t_item)
+
     def _extract_background_color(self, cells):
         """
         Extract background color from a cluster of cells.
@@ -189,6 +192,8 @@ class ReadingOrderModel:
         )
         doc_name = Path(origin.filename).stem
         out_doc: DoclingDocument = DoclingDocument(name=doc_name, origin=origin)
+        # Track created items with potential links in font_metadata
+        created_items: List[NodeItem] = []
 
         for page in conv_res.pages:
             page_no = page.page_no + 1
@@ -234,12 +239,13 @@ class ReadingOrderModel:
                         font_metadata=element.font_metadata,
                         background_color=element.background_color
                     )
+                    created_items.append(code_item)
 
                     if rel.cid in el_to_captions_mapping.keys():
                         for caption_cid in el_to_captions_mapping[rel.cid]:
                             caption_elem = id_to_elem[cid_to_rels[caption_cid].ref.cref]
                             new_cap_item = self._add_caption_or_footnote(
-                                caption_elem, out_doc, code_item, page_height
+                                caption_elem, out_doc, code_item, page_height, created_items
                             )
 
                             code_item.captions.append(new_cap_item.get_ref())
@@ -250,13 +256,13 @@ class ReadingOrderModel:
                                 cid_to_rels[footnote_cid].ref.cref
                             ]
                             new_footnote_item = self._add_caption_or_footnote(
-                                footnote_elem, out_doc, code_item, page_height
+                                footnote_elem, out_doc, code_item, page_height, created_items
                             )
 
                             code_item.footnotes.append(new_footnote_item.get_ref())
                 else:
                     new_item, current_list = self._handle_text_element(
-                        element, out_doc, current_list, page_height
+                        element, out_doc, current_list, page_height, created_items
                     )
 
                     if rel.cid in el_merges_mapping.keys():
@@ -288,7 +294,7 @@ class ReadingOrderModel:
                     for caption_cid in el_to_captions_mapping[rel.cid]:
                         caption_elem = id_to_elem[cid_to_rels[caption_cid].ref.cref]
                         new_cap_item = self._add_caption_or_footnote(
-                            caption_elem, out_doc, tbl, page_height
+                            caption_elem, out_doc, tbl, page_height, created_items
                         )
 
                         tbl.captions.append(new_cap_item.get_ref())
@@ -297,7 +303,7 @@ class ReadingOrderModel:
                     for footnote_cid in el_to_footnotes_mapping[rel.cid]:
                         footnote_elem = id_to_elem[cid_to_rels[footnote_cid].ref.cref]
                         new_footnote_item = self._add_caption_or_footnote(
-                            footnote_elem, out_doc, tbl, page_height
+                            footnote_elem, out_doc, tbl, page_height, created_items
                         )
 
                         tbl.footnotes.append(new_footnote_item.get_ref())
@@ -320,7 +326,7 @@ class ReadingOrderModel:
                     for caption_cid in el_to_captions_mapping[rel.cid]:
                         caption_elem = id_to_elem[cid_to_rels[caption_cid].ref.cref]
                         new_cap_item = self._add_caption_or_footnote(
-                            caption_elem, out_doc, pic, page_height
+                            caption_elem, out_doc, pic, page_height, created_items
                         )
 
                         pic.captions.append(new_cap_item.get_ref())
@@ -329,12 +335,12 @@ class ReadingOrderModel:
                     for footnote_cid in el_to_footnotes_mapping[rel.cid]:
                         footnote_elem = id_to_elem[cid_to_rels[footnote_cid].ref.cref]
                         new_footnote_item = self._add_caption_or_footnote(
-                            footnote_elem, out_doc, pic, page_height
+                            footnote_elem, out_doc, pic, page_height, created_items
                         )
 
                         pic.footnotes.append(new_footnote_item.get_ref())
 
-                self._add_child_elements(element, pic, out_doc)
+                self._add_child_elements(element, pic, out_doc, created_items)
 
             elif isinstance(element, ContainerElement):  # Form, KV region
                 label = element.label
@@ -346,11 +352,13 @@ class ReadingOrderModel:
 
                 container_el = out_doc.add_group(label=group_label)
 
-                self._add_child_elements(element, container_el, out_doc)
+                self._add_child_elements(element, container_el, out_doc, created_items)
 
+        # After building the document, resolve internal link targets to refs
+        self._resolve_internal_links(created_items)
         return out_doc
 
-    def _add_caption_or_footnote(self, elem, out_doc, parent, page_height):
+    def _add_caption_or_footnote(self, elem, out_doc, parent, page_height, created_items: List[NodeItem]):
         assert isinstance(elem, TextElement)
         text = elem.text
         prov = ProvenanceItem(
@@ -366,9 +374,10 @@ class ReadingOrderModel:
             font_metadata=elem.font_metadata,
             background_color=elem.background_color
         )
+        created_items.append(new_item)
         return new_item
 
-    def _handle_text_element(self, element, out_doc, current_list, page_height):
+    def _handle_text_element(self, element, out_doc, current_list, page_height, created_items: List[NodeItem]):
         cap_text = element.text
 
         prov = ProvenanceItem(
@@ -390,6 +399,7 @@ class ReadingOrderModel:
                 font_metadata=element.font_metadata,
                 background_color=element.background_color
             )
+            created_items.append(new_item)
             self.list_item_processor.process_list_item(new_item)
 
         elif label == DocItemLabel.SECTION_HEADER:
@@ -401,6 +411,7 @@ class ReadingOrderModel:
                 font_metadata=element.font_metadata,
                 background_color=element.background_color
             )
+            created_items.append(new_item)
         elif label == DocItemLabel.FORMULA:
             current_list = None
 
@@ -412,6 +423,7 @@ class ReadingOrderModel:
                 font_metadata=element.font_metadata,
                 background_color=element.background_color
             )
+            created_items.append(new_item)
         else:
             current_list = None
 
@@ -427,6 +439,7 @@ class ReadingOrderModel:
                         font_metadata=element.font_metadata,
                         background_color=element.background_color
                     )
+            created_items.append(new_item)
         return new_item, current_list
 
     def _merge_elements(self, element, merged_elem, new_item, page_height):
@@ -448,6 +461,66 @@ class ReadingOrderModel:
         new_item.orig += f" {merged_elem.text}"  # TODO: This is incomplete, we don't have the `orig` field of the merged element.
         new_item.font_metadata.extend(merged_elem.font_metadata)
         new_item.prov.append(prov)
+
+    def _resolve_internal_links(self, items: List[NodeItem]):
+        """Resolve internal link objects in font_metadata by finding target item refs.
+        Expects link dict like {"type": "internal", "page": int, "point": {"x": float, "y": float}, ...}.
+        Adds 'ref' key with RefItem if a matching target is found.
+        """
+        # Build targets per page: (item, page_no, bbox)
+        targets_by_page: Dict[int, List[tuple[NodeItem, ProvenanceItem]]] = {}
+        for it in items:
+            prov_list = getattr(it, "prov", []) or []
+            for pr in prov_list:
+                targets_by_page.setdefault(pr.page_no, []).append((it, pr))
+
+        def point_in_bbox(px: float, py: float, bbox) -> bool:
+            return (bbox.l <= px <= bbox.r) and (bbox.t <= py <= bbox.b)
+
+        for it in items:
+            fm_list = getattr(it, "font_metadata", None)
+            if not fm_list:
+                continue
+            for meta in fm_list:
+                link = meta.get("link") if isinstance(meta, dict) else None
+                if not isinstance(link, dict):
+                    continue
+                if link.get("type") != "internal":
+                    continue
+                if "ref" in link:
+                    continue  # already resolved
+                page_no = link.get("page")
+                point = link.get("point")
+                if not page_no or not isinstance(point, dict):
+                    continue
+                px = float(point.get("x", 0.0))
+                py = float(point.get("y", 0.0))
+                candidates = targets_by_page.get(page_no, [])
+                best_item = None
+                # Prefer containment
+                for tgt_item, pr in candidates:
+                    bbox = pr.bbox
+                    # bbox is expected in bottom-left origin
+                    if point_in_bbox(px, py, bbox):
+                        best_item = tgt_item
+                        break
+                if not best_item and candidates:
+                    # Fallback: nearest by squared distance to bbox center
+                    best_dist = float("inf")
+                    for tgt_item, pr in candidates:
+                        bbox = pr.bbox
+                        cx = (bbox.l + bbox.r) / 2.0
+                        cy = (bbox.t + bbox.b) / 2.0
+                        d = (cx - px) ** 2 + (cy - py) ** 2
+                        if d < best_dist:
+                            best_dist = d
+                            best_item = tgt_item
+                if best_item is not None:
+                    try:
+                        meta["link"]["ref"] = best_item.get_ref()
+                    except Exception:
+                        # Best-effort; ignore failures
+                        pass
 
     def __call__(self, conv_res: ConversionResult) -> DoclingDocument:
         with TimeRecorder(conv_res, "reading_order", scope=ProfilingScope.DOCUMENT):

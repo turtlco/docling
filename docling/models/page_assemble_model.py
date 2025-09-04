@@ -37,15 +37,16 @@ class PageAssembleModel(BasePageModel):
         normalized = normalized.replace("⁄", "/")  # noqa: RUF001
         normalized = normalized.replace("'", "'")  # noqa: RUF001
         normalized = normalized.replace("'", "'")  # noqa: RUF001
-        normalized = normalized.replace(""", '"')
-        normalized = normalized.replace(""", '"')
+        normalized = normalized.replace("”", '"')
+        normalized = normalized.replace("“", '"')
         normalized = normalized.replace("•", "·")
         return normalized
         
     def sanitize_font_metadata(self, metadata_list):
         """
         Sanitize text in font metadata to match the main text processing.
-        
+        Also ensure a 'link' field is present on each entry (None if no hyperlink).
+
         Args:
             metadata_list: List of font metadata dictionaries
             
@@ -59,21 +60,32 @@ class PageAssembleModel(BasePageModel):
         
         for meta in metadata_list:
             # Create a copy to avoid modifying the original
-            meta_copy = meta.copy()
-            
+            meta_copy = dict(meta) if isinstance(meta, dict) else {}
+
             # Get the text from metadata
             text = meta_copy.get("text", "")
             
             # Remove hyphen at end of text if present
-            if text.endswith("-"):
+            if isinstance(text, str) and text.endswith("-"):
                 text = text[:-1]
                 
             # Normalize characters
-            text = self.normalize_characters(text)
-            
+            if isinstance(text, str):
+                text = self.normalize_characters(text)
+
             # Update the text in the metadata copy
             meta_copy["text"] = text
             
+            # Ensure link key exists with the required shape
+            link_val = meta_copy.get("link", None)
+            if link_val is None or isinstance(link_val, (str, dict)):
+                # Accept None, URL string, or dict for internal link
+                pass
+            else:
+                # Any other type -> reset to None
+                link_val = None
+            meta_copy["link"] = link_val
+
             sanitized_metadata.append(meta_copy)
             
         return sanitized_metadata

@@ -67,6 +67,8 @@ class PyMuPdfPageBackend(PdfPageBackend):
         self.page_no = page_no
         self.valid = self._page is not None
         self._background_color = None
+        # Cache links for this page to reuse across computations
+        self._links_cache: Optional[List[Dict[str, Any]]] = None
 
     def _color_int_to_hex(self, color_int: int) -> str:
         """Convert PyMuPDF color integer to hex string."""
@@ -198,6 +200,94 @@ class PyMuPdfPageBackend(PdfPageBackend):
             
         return "#ffffff"  # Default to white on error
 
+    def _load_links(self) -> List[Dict[str, Any]]:
+        """Load and normalize link annotations for this page.
+        Returns a list of dicts with keys: rect (l,t,r,b in TOPLEFT), kind, and either uri (str) or page (int), point (x,y), zoom (float|None).
+        """
+        if self._links_cache is not None:
+            return self._links_cache
+        links: List[Dict[str, Any]] = []
+        if not self._page:
+            self._links_cache = links
+            return links
+        try:
+            with pymupdf_lock:
+                for lnk in self._page.get_links():
+                    rect: fitz.Rect = lnk.get("from")
+                    if not rect:
+                        continue
+                    # Normalize rectangle to (l, t, r, b) floats
+                    l, t, r, b = float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1)
+                    info: Dict[str, Any] = {
+                        "rect": (l, t, r, b),
+                        "kind": lnk.get("kind"),
+                    }
+                    # External URL
+                    uri = lnk.get("uri")
+                    if uri:
+                        info["uri"] = uri
+                    # Internal goto
+                    page = lnk.get("page")
+                    dest = lnk.get("to") or lnk.get("dest")
+                    if page is not None or dest is not None:
+                        # PyMuPDF page index is 0-based
+                        info["page"] = int(page) if page is not None else None
+                        if dest is not None and isinstance(dest, (list, tuple)) and len(dest) >= 2:
+                            info["point"] = {"x": float(dest[0]), "y": float(dest[1])}
+                        else:
+                            info["point"] = None
+                        zoom = lnk.get("zoom")
+                        if zoom is not None:
+                            info["zoom"] = float(zoom)
+                    links.append(info)
+        except Exception:
+            # Best-effort: ignore link extraction errors
+            pass
+        self._links_cache = links
+        return links
+
+    def _rects_intersect(self, a: tuple, b: tuple) -> bool:
+        al, at, ar, ab = a
+        bl, bt, br, bb = b
+        return not (ar <= bl or br <= al or ab <= bt or bb <= at)
+
+    def _best_link_for_bbox(self, bbox: List[float], links: List[Dict[str, Any]]) -> Optional[Union[str, Dict[str, Any]]]:
+        """Find the most likely link overlapping the given bbox.
+        Returns None, a URL string, or an internal link dict.
+        """
+        if not links:
+            return None
+        bl, bt, br, bb = bbox
+        best_area = 0.0
+        best: Optional[Dict[str, Any]] = None
+        for lnk in links:
+            rl, rt, rr, rb = lnk["rect"]
+            if not self._rects_intersect((bl, bt, br, bb), (rl, rt, rr, rb)):
+                continue
+            # Overlap area heuristic
+            ol = max(bl, rl)
+            ot = max(bt, rt)
+            or_ = min(br, rr)
+            ob = min(bb, rb)
+            area = max(0.0, or_ - ol) * max(0.0, ob - ot)
+            if area > best_area:
+                best_area = area
+                best = lnk
+        if not best:
+            return None
+        if best.get("uri"):
+            return best["uri"]
+        # Build internal link object
+        link_obj: Dict[str, Any] = {"type": "internal"}
+        if "page" in best and best["page"] is not None:
+            # Use 1-based page number like other public surfaces
+            link_obj["page"] = int(best["page"]) + 1
+        if best.get("point"):
+            link_obj["point"] = {"x": best["point"]["x"], "y": best["point"]["y"]}
+        if best.get("zoom") is not None:
+            link_obj["zoom"] = best["zoom"]
+        return link_obj
+
     def _create_font_metadata(self, span: dict, text: str, span_idx: int = 0, line: dict = None) -> dict:
         """Create font metadata dictionary from a span."""
         font_name = span.get("font", "")
@@ -270,7 +360,9 @@ class PyMuPdfPageBackend(PdfPageBackend):
             "weight": weight,
             "line_height": round(line_height, 2),
             "space_after": round(space_after, 2),
-            "background_color": background_color
+            "background_color": background_color,
+            # Add link placeholder; to be filled when intersecting a link rect
+            "link": None,
         }
         
         # Only add alt_family_name if it exists and is different from font_family
@@ -310,6 +402,8 @@ class PyMuPdfPageBackend(PdfPageBackend):
 
         cells: List[TextCell] = []
         cell_counter = 0
+        # Load links once
+        links = self._load_links()
 
         for block in text_dict.get("blocks", []):
             if block.get("type", 0) != 0:
@@ -331,8 +425,13 @@ class PyMuPdfPageBackend(PdfPageBackend):
                 for span_idx, span in enumerate(spans):
                     span_text = span.get("text", "")
                     if span_text:
-                        font_metadata.append(self._create_font_metadata(span, span_text.strip(), span_idx, line))
-                
+                        meta = self._create_font_metadata(span, span_text.strip(), span_idx, line)
+                        # Attach link information if span bbox overlaps a link
+                        link_val = self._best_link_for_bbox(meta.get("bbox", []), links)
+                        if link_val is not None:
+                            meta["link"] = link_val
+                        font_metadata.append(meta)
+
                 # Create a TextCell with the text content and font info
                 cell = self._create_text_cell(cell_counter, text_content, bbox_tl, font_metadata)
                 cells.append(cell)
@@ -353,6 +452,7 @@ class PyMuPdfPageBackend(PdfPageBackend):
 
         word_cells: List[TextCell] = []
         span_index = 0
+        links = self._load_links()
 
         for block in text_dict.get("blocks", []):
             if block.get("type", 0) != 0:
@@ -366,7 +466,12 @@ class PyMuPdfPageBackend(PdfPageBackend):
                     bbox_tl = self._create_bounding_box(span.get("bbox", (0, 0, 0, 0)))
 
                     # For word cells, pass the span index and line for consistent metadata
-                    font_metadata = [self._create_font_metadata(span, text_content, span_index % 10000, line)]
+                    meta = self._create_font_metadata(span, text_content, span_index % 10000, line)
+                    # Attach link info to word-level metadata
+                    link_val = self._best_link_for_bbox(meta.get("bbox", []), links)
+                    if link_val is not None:
+                        meta["link"] = link_val
+                    font_metadata = [meta]
 
                     # Create a TextCell with the text content
                     cell = self._create_text_cell(span_index, text_content, bbox_tl, font_metadata, is_word_level=True)
@@ -539,5 +644,4 @@ class PyMuPdfDocumentBackend(PdfDocumentBackend):
             except Exception:
                 pass
             self._doc = None
-
 
