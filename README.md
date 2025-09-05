@@ -14,6 +14,12 @@ uv lock --upgrade-package docling-core
 uv sync
 ```
 
+## Running locally
+You can use the following command to run the docling CLI locally (adjust the PDF as needed):
+```bash
+uv run -m docling.cli.main turtl-pdfs/block-links.pdf --to json --output output --debug-visualize-cells --debug-visualize-layout --debug-visualize-raw-layout --pdf-backend pymupdf --no-ocr -vv
+```
+
 ## Debugging with VSCode and uv
 
 To debug this Python application line by line in VSCode when using uv:
